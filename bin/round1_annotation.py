@@ -81,6 +81,8 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 		names=dis2genes_cols, index_col=False, dtype=str)
 	# ignore different types of the same CDS and limit to min_distance=0kb (intragenic)
 	intragenic_peaks_df = closest_df.loc[closest_df["distance_from_gene"]=="0",:].drop_duplicates()
+	# add annotations found in peaks_df to intragenic peaks
+	intragenic_peaks_df = intragenic_peaks_df.merge(peaks_df, how = 'left', on=list(peaks_df.columns[:6]))
 	intragenic_peak_list =  list(intragenic_peaks_df['name'].unique())
 	# STEP 2: Collect Peaks that are UPSTREAM of genes
 	# get dataframe of all INTERGENIC peaks (not found inside genes)
