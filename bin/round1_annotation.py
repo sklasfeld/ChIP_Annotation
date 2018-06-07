@@ -9,11 +9,11 @@ import upstream_peaks
 
 
 # print and run bash command
-def cmd(cmd_str, verbose):
+def cmd(cmd_str, verbose): 
 	if verbose:
 		sys.stdout.write("%s\n" % cmd_str)
 		sys.stdout.flush()
-	os.system(cmd_str)
+	os.system(cmd_str) 
 
 
 def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
