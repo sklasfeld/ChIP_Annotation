@@ -13,7 +13,7 @@ import bin.round2_annotation as round2_annotation
 import bin.genome_locations as genome_locations
 
 
-def cmd(cmd_str, speak):
+def cmd(cmd_str, speak): #Why redefine cmd? you could just use round1_annotation.cmd(x,y)
     """print and run bash command"""
     if speak:
         sys.stdout.write("%s\n" % cmd_str)
