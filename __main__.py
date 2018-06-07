@@ -318,8 +318,9 @@ if __name__ == '__main__':
                                                  bedtools_path=args.bedtools_path, \
                                                  verbose=args.verbose)
 
+    round1_peaks["distance_from_gene"] = round1_peaks["distance_from_gene"].astype('float64')
     count_intragenic_genes = len( \
-        round1_peaks.loc[round1_peaks["distance_from_gene"] == 0, \
+        round1_peaks.loc[round1_peaks["distance_from_gene"] == 0.0, \
                          bed_cols].drop_duplicates())
     count_upstream_genes_r1 = len( \
         round1_peaks.loc[round1_peaks["distance_from_gene"] < 0, \
@@ -340,7 +341,6 @@ if __name__ == '__main__':
                              (args.filter_tts_downstream, count_downstream_genes_r1))
 
     ### print Number of Peaks INSIDE Genes
-    round1_peaks["distance_from_gene"] = round1_peaks["distance_from_gene"].astype('float64')
     counts_list.append("peaks INSIDE genes in round 1:\t%i" % count_intragenic_genes)
     ### print Number of Peaks Upstream of Genes
     counts_list.append("peaks 1-%ibp UPSTREAM of genes in round 1:\t%i" % \
