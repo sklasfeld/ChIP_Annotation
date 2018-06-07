@@ -25,7 +25,6 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 	 This is round 1 of annotation. It also output peaks that are not annotated
 	 in round 1 to use for round 2 annotation (which involve RNA-sequencing 
 	 results.)
-
 	 mandatory parameters:
 	 * gene_alist - A file that contains gene IDs and their aliases.
 	  The file must be tab-delimited and have atleast 2 columns with the 
@@ -168,7 +167,7 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 	if narrowPeak_boolean:
 		peaks_group_cols = peaks_group_cols+["qValue"]+list(peaks_df.columns[10:])
 	else:
-		peaks_group_cols = peaks_group_cols+list(peaks_df.columns[6:])
+		peaks_group_cols += list(peaks_df.columns[6:])
 	peak_groups_df = round1_alias_df.groupby(peaks_group_cols)
 	peak_nGenes_series = peak_groups_df.apply(lambda x: len(x["gene_id"].unique()))
 	peak_nGenes_df = peak_nGenes_series.to_frame().reset_index()

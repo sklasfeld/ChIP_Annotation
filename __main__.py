@@ -70,87 +70,75 @@ def wc(file_name, samtools_path=""):
 
 
 if __name__ == '__main__':
-    araport_dir = ("%s/../Araport11/" % (os.path.dirname(sys.argv[0])))
 
     parser = argparse.ArgumentParser(description="This is the main script for gene \
-		annotation of ChIP peaks. This script first annotates ChIP peaks by \
-		overlapping them with other ChIP peaks, DNase, MNase, or motifs. \
-		Then it calls annotate the peaks to genes. The first round annotates peaks \
-		by location relative to genes. Priority is given to intragenic peaks and \
-		then peaks upstream of genes (limited by `filter_tss_upstream`) and then \
-		peaks downstream of genes (limited by `filter_tts_downstream`). \
-		The second round is dependent on genes that were found to be significantly \
-		differentially expressed (DE). In round 2, peaks are annotated to upstream \
-		or downstream DE genes (limited by `outlier_filter`). \
-		Last, text files are output that are contain peak-centric and gene-centric \
-		annotations")
+    annotation of ChIP peaks. This script first annotates ChIP peaks by \
+    overlapping them with other ChIP peaks, DNase, MNase, or motifs. \
+    Then it calls annotate the peaks to genes. The first round annotates peaks \
+    by location relative to genes. Priority is given to intragenic peaks and \
+    then peaks upstream of genes (limited by `filter_tss_upstream`) and then \
+    peaks downstream of genes (limited by `filter_tts_downstream`). \
+    The second round is dependent on genes that were found to be significantly \
+    differentially expressed (DE). In round 2, peaks are annotated to upstream \
+    or downstream DE genes (limited by `outlier_filter`). \
+    Last, text files are output that are contain peak-centric and gene-centric \
+    annotations")
     parser.add_argument('prefix', help='prefix for output file(eg. LFY)')
     parser.add_argument('dir_name', help='directory where output will go')
     parser.add_argument('bed_file', help='bed file containing ChIP peaks. Warning: \
-						peaks should have original peak names.')
+    peaks should have original peak names.')
+    parser.add_argument('gene_alist', help="A file that contains gene IDs \
+    and their aliases. The file must be tab-delimited and have \
+    atleast 2 columns with the labels `ID` and `Alias` \
+    See `Araport11/Araport11_gene_info.txt file as an example \
+    of the format. This is the default annotation")
+    parser.add_argument('gene_bedfile', help='bed file with gene locations')
     parser.add_argument('-n', '--narrowpeak_file', help='narrowPeak file containing \
-						ChIP peaks.')
-    parser.add_argument('-ga', '--gene_alist', help='A file that contains gene IDs \
-						and their aliases. The file must be tab-delimited and have \
-						atleast 2 columns with the labels `ID` and `Alias` \
-						See `Araport11/Araport11_gene_info.txt file as an example \
-						of the format. This is the default annotation', \
-                        default=araport_dir + "Araport11_gene_info.txt")
-    parser.add_argument('-gb', '--gene_bedfile', help='bed file with gene locations')
+    ChIP peaks.')
     parser.add_argument('-bp', '--bedtools_path', help='path to bedtools', default="")
     parser.add_argument('-sp', '--samtools_path', help='path to samtools', default="")
     parser.add_argument('-tss', '--filter_tss_upstream', help='round1 annotation is \
-						limited to upstream genes of this many bp (default: 1000)', \
-                        default=1000, type=int)
+    limited to upstream genes of this many bp (default: 1000)', default=1000, type=int)
     parser.add_argument('-tts', '--filter_tts_downstream', help='round1 annotation is \
-						limited to downstream genes of this many bp (default: 100)', \
-                        default=100, type=int)
+    limited to downstream genes of this many bp (default: 100)', default=100, type=int)
     parser.add_argument('-icv', '--ignore_conv_peaks', help='do not output peak information \
-		of peaks that annotate to two different peaks ', action='store_true')
-    parser.add_argument('-of', '--outlier_filter', required=False, type=int, \
+    of peaks that annotate to two different peaks ', action='store_true')
+    parser.add_argument('-of', '--outlier_filter', required=False, type=int,
                         help='maximum bp distance upstream/downstream of genes of \
-	                    outlier peaks (peaks not annotated in round 1) \
-	                    (default:10000)', default=10000)
+                        outlier peaks (peaks not annotated in round 1) \
+                        (default:10000)', default=10000)
     parser.add_argument('-ps', '--compareOldPeaks', nargs='*', help='list of peak \
-						files that you want to compare with', required=False)
+    files that you want to compare with', required=False)
     parser.add_argument('-pn', '--compareOldPeaksNames', nargs='*', help='list of \
-						prefixes for the peaks that you want to compare with. \
-						This must be equal to "compareOldPeaks" variable \
-						(eg.LFY_seedlings)', required=False, default=[])
+    prefixes for the peaks that you want to compare with. This must be equal to \
+    "compareOldPeaks" variable (eg.LFY_seedlings)', required=False, default=[])
     parser.add_argument('-ops', '--oldPeakScores', help='if peak overlaps with \
-						old peak then report score of old peak. Otherwise put NA', \
-                        action='store_true')
-    parser.add_argument('-rs', '--compareRNAseqs', nargs='*', help='list of text \
-						files that contain a newline delimited list of genes \
-						that were "differentially expressed" in a sample', required=False)
-    parser.add_argument('-rn', '--compareRNAseqsNames', nargs='*', help='list of \
-						prefixes for the RNA samples that you want to compare with. \
-						This must be equal to "compareRNAseqs" variable \
-						(eg.RNA_seedlings)', required=False, default=[])
-    parser.add_argument('-mf', '--motifFiles', nargs='*', help='list of bed \
-						files with locations of TF motifs', required=False)
+    old peak then report score of old peak. Otherwise put NA', action='store_true')
+    parser.add_argument('-rs', '--compareRNAseqs', nargs='*', help='list of text files \
+    that contain a newline delimited list of genes that were "differentially expressed" \
+     in a sample', required=False)
+    parser.add_argument('-rn', '--compareRNAseqsNames', nargs='*', help='list of prefixes \
+    for the RNA samples that you want to compare with. This must be equal to \
+    "compareRNAseqs" variable (eg.RNA_seedlings)', required=False, default=[])
+    parser.add_argument('-mf', '--motifFiles', nargs='*', help='list of bed files with \
+    locations of TF motifs', required=False)
     parser.add_argument('-mn', '--motifNames', nargs='*', help='list giving names of \
-						the type of motifs given in each bed file in --motifFiles. \
-						This list must be of equal length to the "motifFiles" variable \
-						(eg.LFY1)', required=False, default=[])
-    parser.add_argument('-df', '--dnase_files', nargs='*', help='list of bed \
-						files with locations of DNase Hypersensitivity sites', \
-                        required=False)
+    the type of motifs given in each bed file in --motifFiles. This list must be of \
+    equal length to the "motifFiles" variable (eg.LFY1)', required=False, default=[])
+    parser.add_argument('-df', '--dnase_files', nargs='*', help='list of bed files with \
+    locations of DNase Hypersensitivity sites', required=False)
     parser.add_argument('-dn', '--dnase_names', nargs='*', help='list giving names for \
-						each DNAse experiment corresponding to DNAse bed files in \
-						--dnase_files. This list must be of equal length to the \
-						"dnase_files" variable (eg.DNAse_flowers)', required=False, \
-                        default=[])
+    each DNAse experiment corresponding to DNAse bed files in --dnase_files. This \
+    list must be of equal length to the "dnase_files" variable (eg.DNAse_flowers)',
+                        required=False, default=[])
     parser.add_argument('-nf', '--mnase_files', nargs='*', help='list of bed \
-						files with locations of nucleosome binding sites (via \
-						MNase)', required=False)
+    files with locations of nucleosome binding sites (via MNase)', required=False)
     parser.add_argument('-nn', '--mnase_names', nargs='*', help='list giving names for \
-						each MNase experiment corresponding to MNase bed files in \
-						--mnase_files. This list must be of equal length to the \
-						"mnase_files" variable (eg.HighMock)', required=False, \
-                        default=[])
+    each MNase experiment corresponding to MNase bed files in --mnase_files. \
+    This list must be of equal length to the "mnase_files" variable (eg.HighMock)',
+                        required=False, default=[])
     parser.add_argument('-idr', '--globalIDRpval', help='global IDR pvalue used on \
-		to get this output', default="")
+    to get this output', default="")
     parser.add_argument('--keep_tmps', help='keep temp files', action='store_true')
     parser.add_argument('--verbose', help='echo processing', action='store_true')
 
@@ -177,7 +165,7 @@ if __name__ == '__main__':
 
     count_file = ("%s/%s_counts.txt" % (dir_name, args.prefix))
 
-    counts_list = []
+    counts_list = list()
     # roundOfAnnotation = {} # roundOfAnnotation[peak_name] = round_annotated
     # 1 = round 1 ()
     # 2 = round 2 (adopted peaks)
@@ -200,7 +188,7 @@ if __name__ == '__main__':
 
     # get peak dataframe
     peak_info_columns = ["chr", "start", "stop", "name", "signal", "strand", \
-                         "signal", "pValue", "qValue", "summit"]
+                         "fold_change", "pValue", "qValue", "summit"]
     bed_cols = peak_info_columns[:6]
     cur_peakfile = args.bed_file
     if args.narrowpeak_file:
@@ -339,7 +327,7 @@ if __name__ == '__main__':
     count_downstream_genes_r1 = len( \
         round1_peaks.loc[round1_peaks["distance_from_gene"] > 0, \
                          bed_cols].drop_duplicates())
-    if verbose:
+    if args.verbose:
         # number intragenic
         sys.stdout.write("Number of Peaks INSIDE Genes: %i\n" % \
                          count_intragenic_genes)
@@ -361,15 +349,14 @@ if __name__ == '__main__':
     if args.filter_tts_downstream > 0:
         counts_list.append("peaks 1-%ibp DOWNSTREAM of genes in round 1:\t%i" % \
                            (args.filter_tts_downstream, count_downstream_genes_r1))
-    if len(args.compareRNAseqs) > 0:
-        round1_peaks["roundOfAnnotation"] = 1
+    round1_peaks["roundOfAnnotation"] = 1
 
     ### Print number of peaks annotated in round 1
     round1_count = len(round1_peaks.loc[:, bed_cols].drop_duplicates())
     counts_list.append("peaks annotated in round1\t%i" % \
                        (round1_count))
 
-    upstream_convergent_peaks_file = ("%s_convergent_upstream_peaks.txt" % prefix)
+    upstream_convergent_peaks_file = ("%s_convergent_upstream_peaks.txt" % args.prefix)
     if (not os.path.isfile(upstream_convergent_peaks_file)):
         counts_list.append("number of UPSTREAM convergent peaks in round 1:\t0")
     else:
@@ -377,7 +364,7 @@ if __name__ == '__main__':
         counts_list.append("number of UPSTREAM convergent peaks in round 1:\t%i" % \
                            len(list((up_convergent_peaks_df.loc[:, bed_cols].drop_duplicates()))))
 
-    downstream_convergent_peaks_file = ("%s_convergent_downstream_peaks.txt" % prefix)
+    downstream_convergent_peaks_file = ("%s_convergent_downstream_peaks.txt" % args.prefix)
     if (not os.path.isfile(downstream_convergent_peaks_file)):
         counts_list.append("number of DOWNSTREAM convergent peaks in round 1:\t0")
     else:
@@ -406,13 +393,13 @@ if __name__ == '__main__':
             # rna_sample_name = args.compareRNAseqsNames[rna_samp]
             de_genes = text2vector(rna_sample_file)
             # RNAseqs_dict[rna_sample_name] = de_genes
-            all_de_genes = all_de_genes + de_genes
+            all_de_genes += de_genes
         all_de_genes = list(set(all_de_genes))
         de_genes_df = gene_bedfile_df[gene_bedfile_df['gene_id'].isin(all_de_genes)]
 
         round2_ann_file = ("%s/%s_r2_peak_annotations.txt" % (dir_name, args.prefix))
-        round2_peaks = round2_annotation.r2_annotate(gene_alist, de_genes_df, outlier_df, \
-                                                     outlier_filter, round2_ann_file)
+        round2_peaks = round2_annotation.r2_annotate(gene_alist, de_genes_df, outlier_df,
+                                                     args.outlier_filter, round2_ann_file)
         round2_peaks["roundOfAnnotation"] = 2
         orphan_peaks_df = outlier_df[~outlier_df["name"].isin(round2_peaks["name"])]
 
@@ -435,8 +422,7 @@ if __name__ == '__main__':
     # reorganize columns
     all_peaks_col_order = bed_cols + ['roundOfAnnotation']
     if args.narrowpeak_file:
-        all_peaks_col_order = all_peaks_col_order + \
-                              ['qValue', 'summit']
+        all_peaks_col_order += ['qValue', 'summit']
     all_peaks_col_order = all_peaks_col_order + \
                           ['gene_id', 'Alias'] + \
                           ['distance_from_gene'] + \
@@ -505,8 +491,7 @@ if __name__ == '__main__':
     # Print out Peak-centric datatable...
     peak_group_cols = bed_cols + ['roundOfAnnotation']
     if args.narrowpeak_file:
-        peak_group_cols = peak_group_cols + \
-                          ['qValue', 'summit']
+        peak_group_cols += ['qValue', 'summit']
     peak_group_cols = peak_group_cols + \
                       args.compareOldPeaksNames + \
                       args.motifNames + \
@@ -526,11 +511,16 @@ if __name__ == '__main__':
     peak_gid_df = peak_gid_series.to_frame().reset_index()
     peak_gid_df.columns = peak_group_cols + ['gene_id']
     peak_ann_df = peak_ann_df.merge(peak_gid_df, how='left', on=peak_group_cols)
-    ## list gene ids that annotate to peaks
-    peak_gname_series = peak_grouped_df.apply(lambda x: ";".join(str(s) for s in list(x["Alias"])))
+    ## list gene names that annotate to peaks
+    peak_gname_series = peak_grouped_df.apply(lambda x: ";".join(str(s) for s in list(x["gene_name"])))
     peak_gname_df = peak_gname_series.to_frame().reset_index()
     peak_gname_df.columns = peak_group_cols + ['gene_name']
     peak_ann_df = peak_ann_df.merge(peak_gname_df, how='outer', on=peak_group_cols)
+    ## list distances of genes that annotate to peaks
+    peak_dist_series = peak_grouped_df.apply(lambda x: ";".join(str(s) for s in list(x["distance_from_gene"])))
+    peak_dist_df = peak_dist_series.to_frame().reset_index()
+    peak_dist_df.columns = peak_group_cols + ['distance_from_gene']
+    peak_ann_df = peak_ann_df.merge(peak_dist_df, how='outer', on=peak_group_cols)
     ## list True if any of the genes that the peak is annotated to is DE
     ## in each sample
     if args.compareRNAseqs:
@@ -543,12 +533,12 @@ if __name__ == '__main__':
             peak_ann_df[rna_name].fillna(False, inplace=True)
     ## reorganize data-table to show gene columns closer to peak columns and
     ## extra info towards the later columns
-    peak2gene_info_cols = ['numGenes', 'gene_id', 'gene_name']
+    peak2gene_info_cols = ['numGenes', 'gene_id', 'gene_name','distance_from_gene']
     peak_col_order = peak_group_cols[0:7] + peak2gene_info_cols + \
                      args.compareRNAseqsNames + peak_group_cols[7:]
     peak_ann_df = peak_ann_df.loc[:, peak_col_order]
     pd.set_option('float_format', '{:.0f}'.format)
-    peak_out = ("%s_peakwise_ann.txt" % args.prefix)
+    peak_out = ("%s/%s_peakwise_ann.txt" % (dir_name, args.prefix))
     peak_ann_df = peak_ann_df.drop_duplicates()
     peak_ann_df.to_csv(peak_out, sep="\t", index=False, na_rep="NA")
 
@@ -626,7 +616,7 @@ if __name__ == '__main__':
                                             on=gene_group_cols)
             gene_ann_df[mnase_samp].fillna(False, inplace=True)
 
-    gene_out = ("%s_genewise_ann.txt" % args.prefix)
+    gene_out = ("%s/%s_genewise_ann.txt" % (dir_name, args.prefix))
     gene_ann_df = gene_ann_df.drop_duplicates()
     gene_ann_df.to_csv(gene_out, sep="\t", index=False, na_rep="NA")
 

@@ -71,7 +71,7 @@ def r2_annotate(gene_alist, gene_df, peak_df, maxdist, out):
 	if narrowPeak_boolean:
 		peaks_group_cols = peaks_group_cols+["qValue"]+list(peaks_df.columns[10:])
 	else:
-		peaks_group_cols = peaks_group_cols+list(peaks_df.columns[6:])
+        peaks_group_cols += list(peaks_df.columns[6:])
 	peak_groups_df = round2_alias_df.groupby(peaks_group_cols)
 	peak_nGenes_series = peak_groups_df.apply(lambda x: len(x["gene_id"].unique()))
 	peak_nGenes_df = peak_nGenes_series.to_frame().reset_index()
