@@ -15,7 +15,7 @@ def cmd(cmd_str, speak):
 
 def peakoverlap(file_name):
 	"""calculate peak overlap from bed file"""
-	cmd = ("cut -f1,2,3 %s| sort -u| wc -l" % file_name)
+	cmd = ("cut -f1,2,3 %s| sort -u| wc -l" % file_name) #it might be better to use a different name than cmd, since you define cmd as a command above
 	ps = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,
 		stderr=subprocess.STDOUT)
 	output = ps.communicate()[0]
@@ -54,7 +54,7 @@ def compare_bedfiles(peakfile1, peakfile2, outfile, *positional_parameters, \
 	cmd(cmd1, verbal)
 
 	# remove lines below $distance
-	cmd2=("""awk -F"\\t" '$NF>=%i' %s > %s""" % \
+	cmd2=("""awk -F"\\t" '$NF>=%i' %s > %s""" % \ #this line is triple commented, should it be that way?
 		(distance, tmp_intersect1, outfile))
 	cmd(cmd2, verbal)
 
