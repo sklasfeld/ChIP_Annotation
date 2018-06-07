@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import os
+#It doesn't seem like you use sys or subprocess anywhere
 import sys
 import subprocess
 import pandas as pd
@@ -33,13 +34,13 @@ def annotate(prefix, intraButNotUpstream_df, gene_file, maximum_bp, outfile, \
 	
 
 	# get tts_table from gene table
-	tts_table = pd.read_csv(geneBed_file, sep='\t', header=None)
+	tts_table = pd.read_csv(geneBed_file, sep='\t', header=None)	#geneBed_file is not defined anywhere, only gene_file
 	tts_table.columns = ['tts_chr', 'tts_start', 'tts_stop', \
 		'gene_id', 'tts_score', 'tts_strand']
 	tts_table.loc[tts_table["tts_strand"] == "+", "tts_start"] = \
 		tts_table.loc[tts_table["tts_strand"] == "+", "tts_stop"] - 1
 	tts_table.loc[tts_table["tts_strand"] == "-", "tts_stop"] = \
-		tts_table.loc[tts_table["tts_strand"] == "-", "tts_start"] + 1
+		tts_table.loc[tts_table["tts_strand"] == "-", "tts_start"] + 1  #Are you just making the start/stop sites one base long? Why?
 	
 	
 
@@ -55,7 +56,7 @@ def annotate(prefix, intraButNotUpstream_df, gene_file, maximum_bp, outfile, \
 
 	# negative strand downstream 
 	neg_downstream_df = peaks2genes_df[((peaks2genes_df["tts_strand"]=="-") & \
-		(peaks2genes_df["stop"] <= peaks2genes_df["tts_start"]))]
+		(peaks2genes_df["stop"] <= peaks2genes_df["tts_start"]))] 
 	# positive strand downstream
 	pos_downstream_df = peaks2genes_df[((peaks2genes_df["tts_strand"]=="+") & \
 		(peaks2genes_df["start"] >= peaks2genes_df["tts_stop"]))]
