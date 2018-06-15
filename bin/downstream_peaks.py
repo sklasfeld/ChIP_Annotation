@@ -6,7 +6,7 @@ import subprocess
 import pandas as pd
 import numpy as np
 
-def annotate(prefix, intraButNotUpstream_df, gene_file, maximum_bp, outfile, \
+def annotate(prefix, intraButNotUpstream_df, gene_file, maximum_bp, outdir, \
 	*positional_parameters, **keyword_parameters):
 	"""This function annotates downstream peaks to the closest TTS 
 	within maximum number of bp. Note that if a TTS is within range but on the same 
@@ -18,7 +18,7 @@ def annotate(prefix, intraButNotUpstream_df, gene_file, maximum_bp, outfile, \
 	genes nor annotated as upstream of a nearby gene
 	* gene_file - bed file containing tts sites.
 	* maximum_bp - maximum bp upstream
-	* outfile - text file output
+	* outdir - output directory
 	optional parameters:
 	* ignore_conv_peaks - remove convergent peak information (peaks that annotate 
 	to two different peaks) and put their info in a seperate file (default:False)"""
@@ -113,11 +113,12 @@ def annotate(prefix, intraButNotUpstream_df, gene_file, maximum_bp, outfile, \
 	if len(downstream_filtered_arr) > 0:
 		downstream_filtered_df = pd.concat(downstream_filtered_arr)
 	downstream_filtered_df = downstream_filtered_df[list(intraButNotUpstream_df.columns[0:6])+list(tts_table.columns)+["distance_from_gene"]]
+	outfile = ("%s/%s_closest_iu.txt" % (outdir, prefix))
 	downstream_filtered_df.to_csv(outfile, sep="\t", index=False, header=False)
 
 	if len(convergent_peaks_arr) > 0:
 		convergent_peaks_df = pd.concat(convergent_peaks_arr)
-		convergent_peaks_file = ("%s_convergent_downstream_peaks.txt" % prefix)
+		convergent_peaks_file = ("%s/%s_convergent_downstream_peaks.txt" % (outdir,prefix))
 		convergent_peaks_df = convergent_peaks_df[list(intraButNotUpstream_df.columns[0:6])+list(tts_table.columns)+["distance_from_gene"]]
 		convergent_peaks_df.to_csv(convergent_peaks_file, sep="\t", index=False, header=True)
 

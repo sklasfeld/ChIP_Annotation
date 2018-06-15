@@ -4,6 +4,7 @@ import os
 import sys
 from collections import defaultdict
 import pandas as pd
+import numpy as np
 import math
 import upstream_peaks
 
@@ -63,6 +64,7 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 	if ('verbose' in keyword_parameters):
 		verbose = verbose
 	narrowPeak_boolean = False
+	
 	if 'qValue' in peaks_df.columns:
 		narrowPeak_boolean = True
 	# create a dataframe with gene alias information
@@ -78,9 +80,14 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 		["gene_chr", "gene_chromStart", "gene_chromEnd", "gene_id", \
 		"gene_score", "gene_strand"] + ["distance_from_gene"]
 	closest_df = pd.read_csv(closestgenes_file, sep="\t", header=None, \
-		names=dis2genes_cols, index_col=False, dtype=str)
+		names=dis2genes_cols, index_col=False, dtype={"chr" : object, \
+			"start" : np.int64, "stop" : np.int64, "name" : object, \
+			"signal" : np.float64, "strand":object, "gene_chr" : object, \
+			"gene_chromStart" : np.int64, "gene_chromEnd" : np.int64, \
+			"gene_id" : object, "gene_score" : np.float64, \
+			"gene_strand":object, "distance_from_gene": np.float64})
 	# ignore different types of the same CDS and limit to min_distance=0kb (intragenic)
-	intragenic_peaks_df = closest_df.loc[closest_df["distance_from_gene"]=="0",:].drop_duplicates()
+	intragenic_peaks_df = closest_df.loc[closest_df["distance_from_gene"]==0.0,:].drop_duplicates()
 	# add annotations found in peaks_df to intragenic peaks
 	intragenic_peaks_df = intragenic_peaks_df.merge(peaks_df, how = 'left', on=list(peaks_df.columns[:6]))
 	intragenic_peak_list =  list(intragenic_peaks_df['name'].unique())
@@ -94,17 +101,27 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 		if ignore_conv_peaks:
 			upstream_peaks_df = upstream_peaks.annotate(prefix, \
 				intergenic_peaks_df, geneBed_file, bp_upstream_filter, \
-				upsteamgenes_file, ignore_conv_peaks=ignore_conv_peaks)
+				dir_name, ignore_conv_peaks=ignore_conv_peaks)
 		else:
 			upstream_peaks_df = upstream_peaks.annotate(prefix, \
 				intergenic_peaks_df, geneBed_file, bp_upstream_filter, \
-				upsteamgenes_file)
+				dir_name)
 	else:
-		sys.stderr.write("The file %s already exists so I am not going to overwrite it" \
+		sys.stderr.write("The file %s already exists so I am not going to overwrite it\n" \
 			% upsteamgenes_file)
 		# get upstream distance output into df
 		upstream_peaks_df = pd.read_csv(upsteamgenes_file, sep="\t", header=None, \
-			names=dis2genes_cols, index_col=False, dtype=str)
+			names=["chr", "start", "stop", "name", "signal", "strand", \
+			"tss_chr", "tss_start", "tss_stop", "gene_id", "tss_score", \
+			"tss_strand", "distance_from_gene"], \
+			index_col=False, dtype={"chr" : object, \
+			"start" : np.int64, "stop" : np.int64, "name" : object, \
+			"signal" : np.float64, "strand":object, "tss_chr" : object, \
+			"tss_start" : np.int64, "tss_stop" : np.int64, \
+			"gene_id" : object, "tss_score" : np.float64, \
+			"tss_strand":object, "distance_from_gene": np.float64})
+	
+	upstream_peaks_df = upstream_peaks_df.merge(peaks_df, how = 'left', on=list(peaks_df.columns[:6]))
 	# STEP 3: Collect Peaks that are DOWNSTREAM of genes
 	downstream_peaks_df = pd.DataFrame()
 	if bp_downstream_filter != 0:
@@ -116,47 +133,41 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 		if ignore_conv_peaks:
 			downstream_peaks_df = downstream_peaks.annotate(prefix, \
 				intraButNotUpstream_df, geneBed_file, \
-				bp_downstream_filter, downstreamgenes_file, \
+				bp_downstream_filter, dir_name, \
 				ignore_conv_peaks=ignore_conv_peaks)
 		else:
 			downstream_peaks_df = downstream_peaks.annotate(prefix, \
 				intraButNotUpstream_df, geneBed_file, \
-				bp_downstream_filter, downstreamgenes_file)
+				bp_downstream_filter, dir_name)
+	if len(downstream_peaks_df) > 0:
+		downstream_peaks_df = downstream_peaks_df.merge(peaks_df, how = 'left', on=list(peaks_df.columns[:6]))
 	# connect upstream and downstream peaks to gene locations rather than
 	# tss or tts respectively
 	peak2gene_cols = list(intragenic_peaks_df.columns)
 	gene_table = pd.read_csv(geneBed_file, sep='\t', header=None)
 	gene_table.columns=peak2gene_cols[6:12]
 	# remove tss info from upstream dataframe
-	upstream_peaks_2_genes = upstream_peaks_df.loc[:,[u'chr', u'start', \
-		u'stop', u'name', u'signal', u'strand', u'gene_id', \
-		u'distance_from_gene']]
+	upstream_peaks_df = upstream_peaks_df.drop(['tss_chr', 'tss_start', \
+		'tss_stop', 'tss_score','tss_strand'],axis=1)
+
 	# add gene info to upstream dataframe
-	upstream_peaks_2_genes = upstream_peaks_2_genes.merge(gene_table, \
+	upstream_peaks_2_genes = upstream_peaks_df.merge(gene_table, \
 		how = 'left', on='gene_id')
-	upstream_peaks_2_genes = upstream_peaks_2_genes.loc[:,peak2gene_cols]
+	#upstream_peaks_2_genes = upstream_peaks_2_genes.loc[:,peak2gene_cols]
 	round1_frame = []
 	if len(downstream_peaks_df) > 0:
 		# remove tts info from downstream dataframe
-		downstream_peaks_2_genes = downstream_peaks_df.loc[:,[u'chr', u'start', \
-			u'stop', u'name', u'signal', u'strand', u'gene_id', \
-			u'distance_from_gene']]
+		downstream_peaks_df = downstream_peaks_df.drop(['tts_chr', 'tts_start', \
+			'tts_stop', 'tts_score','tts_strand'],axis=1)
 		# add gene info to upstream dataframe
-		downstream_peaks_2_genes = downstream_peaks_2_genes.merge(gene_table, \
+		downstream_peaks_2_genes = downstream_peaks_df.merge(gene_table, \
 			how = 'left', on='gene_id')
-		downstream_peaks_2_genes = downstream_peaks_2_genes.loc[:,peak2gene_cols]
+		#downstream_peaks_2_genes = downstream_peaks_2_genes.loc[:,peak2gene_cols]
 		# concatenate the annotated peaks into one dataframe
 		round1_frame = [intragenic_peaks_df, upstream_peaks_2_genes, downstream_peaks_2_genes]
 	else:
 		round1_frame = [intragenic_peaks_df, upstream_peaks_2_genes]
 	round1_df = pd.concat(round1_frame)
-	# add qval peak information
-	if narrowPeak_boolean:
-		peaks_df["start"] = peaks_df["start"].astype('float64')
-		peaks_df["stop"] = peaks_df["stop"].astype('float64')
-		round1_df["start"] = round1_df["start"].astype('float64')
-		round1_df["stop"] = round1_df["stop"].astype('float64')
-		round1_df = round1_df.merge(peaks_df, how='left', on=peak2gene_cols[0:6])
 	# add gene Alias and gene description information
 	round1_alias_df = round1_df.merge(geneAnn_df, how='left', \
 		left_on='gene_id', right_on='ID')
@@ -191,7 +202,7 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 		column_order= peak2gene_cols[0:6] + \
 			peak2gene_info_cols+list(peaks_df.columns[6:])
 	peak_ann_df = peak_ann_df.loc[:,column_order]
-	pd.set_option('float_format', '{:.0f}'.format)
+	pd.set_option('float_format', '{:.2f}'.format)
 	peak_ann_df.to_csv(round1_ann, sep="\t", index=False, na_rep="NA")
 	# get gene-centric annotation
 	gene_groups_df = round1_alias_df.groupby(peak2gene_cols[6:12])
