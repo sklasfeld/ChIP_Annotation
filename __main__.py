@@ -512,12 +512,15 @@ if __name__ == '__main__':
     gene_count_r1 = len(all_peaks_df.loc[all_peaks_df["roundOfAnnotation"] == 1, "gene_id"].unique())
     counts_list.append("genes annotated in round1\t%i" % \
                        (gene_count_r1))
+    
+    rna_counts_names=[]
     if args.RNAcounts:
         rna_counts_df = pd.read_csv(args.RNAcounts, sep='\t')
+        rna_counts_names = list(rna_counts_df.columns)
         if args.RNAcounts_suffix:
-            old_col_names = list(rna_counts_df.columns)
-            rna_counts_df.columns = old_col_names[:1] + \
-                [x  + args.RNAcounts_suffix for x in old_col_names[1:]]
+            rna_counts_names = rna_counts_names[:1] + \
+                [x  + args.RNAcounts_suffix for x in rna_counts_names[1:]]
+            rna_counts_df.columns = rna_counts_names
         all_peaks_df = all_peaks_df.merge(rna_counts_df, on="gene_id", how = "left")
 
 
@@ -606,8 +609,17 @@ if __name__ == '__main__':
     peak_dist_df = peak_dist_series.to_frame().reset_index()
     peak_dist_df.columns = peak_group_cols + ['distance_from_gene']
     peak_ann_df = peak_ann_df.merge(peak_dist_df, how='outer', on=peak_group_cols)
-    ## list True if any of the genes that the peak is annotated to is DE
-    ## in each sample
+    ## if applicable, list counts (eg.TPMs) of the gene expression for 
+    ## each RNA sample
+    if args.RNAcounts:
+        for rna_name in rna_counts_names:
+            peak_tpmGene_series = peak_grouped_df.apply(lambda x: x[rna_name].any())
+            peak_tpmGene_df = peak_tpmGene_series.to_frame().reset_index()
+            peak_tpmGene_df.columns = peak_group_cols + [rna_name]
+            peak_ann_df = peak_ann_df.merge(peak_tpmGene_df, how='left', \
+                                            on=peak_group_cols)
+    ## if applicable, list True (or RNA DE value) if any of the genes 
+    ## that the peak is annotated to is DE in each sample
     if args.compareRNAdiffExp:
         for rna_name in args.compareRNAdiffExpNames:
             peak_degene_series = peak_grouped_df.apply(lambda x: x[rna_name].any())
@@ -620,7 +632,8 @@ if __name__ == '__main__':
     ## extra info towards the later columns
     peak2gene_info_cols = ['numGenes', 'gene_id', 'gene_name','distance_from_gene']
     peak_col_order = peak_group_cols[0:7] + peak2gene_info_cols + \
-                     args.compareRNAdiffExpNames + peak_group_cols[7:]
+                     rna_counts_names + args.compareRNAdiffExpNames + \
+                     peak_group_cols[7:]
     peak_ann_df = peak_ann_df.loc[:, peak_col_order]
     pd.set_option('float_format', '{:.2f}'.format)
     peak_out = ("%s/%s_peakwise_ann.txt" % (dir_name, args.prefix))
@@ -629,6 +642,7 @@ if __name__ == '__main__':
 
     # Print out Gene-centric datatable...
     gene_group_cols = ["gene_id", "gene_name"] + \
+                        rna_counts_names +
                       args.compareRNAdiffExpNames
     gene_groups_df = all_peaks_df.groupby(gene_group_cols)
     ## list number of genes that annotate to peak
