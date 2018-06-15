@@ -516,11 +516,10 @@ if __name__ == '__main__':
     rna_counts_names=[]
     if args.RNAcounts:
         rna_counts_df = pd.read_csv(args.RNAcounts, sep='\t')
-        rna_counts_names = list(rna_counts_df.columns)
+        rna_counts_names = list(rna_counts_df.columns)[1:]
         if args.RNAcounts_suffix:
-            rna_counts_names = rna_counts_names[:1] + \
-                [x  + args.RNAcounts_suffix for x in rna_counts_names[1:]]
-            rna_counts_df.columns = rna_counts_names
+            rna_counts_names = [x  + args.RNAcounts_suffix for x in rna_counts_names]
+            rna_counts_df.columns = ['gene_id'] + rna_counts_names
         all_peaks_df = all_peaks_df.merge(rna_counts_df, on="gene_id", how = "left")
 
 
@@ -642,7 +641,7 @@ if __name__ == '__main__':
 
     # Print out Gene-centric datatable...
     gene_group_cols = ["gene_id", "gene_name"] + \
-                        rna_counts_names +
+                        rna_counts_names + \
                       args.compareRNAdiffExpNames
     gene_groups_df = all_peaks_df.groupby(gene_group_cols)
     ## list number of genes that annotate to peak
