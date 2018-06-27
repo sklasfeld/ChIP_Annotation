@@ -18,26 +18,26 @@ def r2_annotate(gene_alist, gene_df, peaks_df, maxdist, out):
 	
 	# negative strand upstream
 	neg_upstream_df = peaks2genes_df[((peaks2genes_df["gene_strand"]=="-") & \
-		(peaks2genes_df["start"] >= peaks2genes_df["gene_stop"]))]
+		(peaks2genes_df["start"] >= peaks2genes_df["gene_stop"]))].copy()
 	# negative strand downstream 
 	neg_downstream_df = peaks2genes_df[((peaks2genes_df["gene_strand"]=="-") & \
-		(peaks2genes_df["stop"] <= peaks2genes_df["gene_start"]))]
+		(peaks2genes_df["stop"] <= peaks2genes_df["gene_start"]))].copy()
 	# positive strand downstream
 	pos_downstream_df = peaks2genes_df[((peaks2genes_df["gene_strand"]=="+") & \
-		(peaks2genes_df["start"] >= peaks2genes_df["gene_stop"]))]
+		(peaks2genes_df["start"] >= peaks2genes_df["gene_stop"]))].copy()
 	# positve strand upstream
 	pos_upstream_df = peaks2genes_df[((peaks2genes_df["gene_strand"]=="+") & \
-		(peaks2genes_df["stop"] <= peaks2genes_df["gene_start"]))]
+		(peaks2genes_df["stop"] <= peaks2genes_df["gene_start"]))].copy()
 	# intragenic
 	intragenic_df = peaks2genes_df[(( \
 		(peaks2genes_df["start"] >= peaks2genes_df["gene_start"]) & \
 		(peaks2genes_df["start"] < peaks2genes_df["gene_stop"])) | \
 		((peaks2genes_df["stop"] > peaks2genes_df["gene_start"]) & \
-		(peaks2genes_df["stop"] <= peaks2genes_df["gene_stop"])))]
+		(peaks2genes_df["stop"] <= peaks2genes_df["gene_stop"])))].copy()
 
 
 	# calculate distance for each group
-	neg_upstream_df.loc[:,"start"].is_copy = False
+	#neg_upstream_df.loc[:,"start"].is_copy = False
 	neg_upstream_df.loc[:,"distance_from_gene"] = ((neg_upstream_df.loc[:,"gene_stop"] - 1) - 
 		(neg_upstream_df.loc[:,"start"]))
 	neg_downstream_df.loc[:,"distance_from_gene"] = (neg_downstream_df.loc[:,"gene_start"] - 

@@ -11,7 +11,7 @@ from collections import Counter
 import bin.round1_annotation as round1_annotation
 import bin.round2_annotation as round2_annotation
 import bin.genome_locations as genome_locations
-pd.options.mode.chained_assignment = None
+pd.options.mode.chained_assignment = 'raise'
 
 
 def cmd(cmd_str, speak):
@@ -476,7 +476,7 @@ if __name__ == '__main__':
         counts_list.append("total peaks annotated\t%i" % (round1_count + round2_count))
         # get dataframe with all peak annotations including unassigned peaks
         all_peaks_frame = [round1_peaks, round2_peaks, orphan_peaks_df]
-        all_peaks_df = pd.concat(all_peaks_frame)
+        all_peaks_df = pd.concat(all_peaks_frame, sort=False)
 
     else:
         orphan_peaks_df = outlier_df
@@ -612,7 +612,7 @@ if __name__ == '__main__':
     ## each RNA sample
     if args.RNAcounts:
         for rna_name in rna_counts_names:
-            peak_tpmGene_series = peak_grouped_df.apply(lambda x: x[rna_name].any())
+            peak_tpmGene_series = peak_grouped_df.apply(lambda x: ";".join(str(s) for s in list(x[rna_name])))
             peak_tpmGene_df = peak_tpmGene_series.to_frame().reset_index()
             peak_tpmGene_df.columns = peak_group_cols + [rna_name]
             peak_ann_df = peak_ann_df.merge(peak_tpmGene_df, how='left', \
@@ -622,6 +622,9 @@ if __name__ == '__main__':
     if args.compareRNAdiffExp:
         for rna_name in args.compareRNAdiffExpNames:
             peak_degene_series = peak_grouped_df.apply(lambda x: x[rna_name].any())
+            if args.rnaScores:
+                peak_degene_series = peak_grouped_df.apply( \
+                    lambda x: ";".join(str(s) for s in list(x[rna_name])))
             peak_degene_df = peak_degene_series.to_frame().reset_index()
             peak_degene_df.columns = peak_group_cols + [rna_name]
             peak_ann_df = peak_ann_df.merge(peak_degene_df, how='left', \
@@ -635,9 +638,11 @@ if __name__ == '__main__':
                      peak_group_cols[7:]
     peak_ann_df = peak_ann_df.loc[:, peak_col_order]
     pd.set_option('float_format', '{:.2f}'.format)
-    peak_out = ("%s/%s_peakwise_ann.txt" % (dir_name, args.prefix))
+    peak_out_tsv = ("%s/%s_peakwise_ann.tsv" % (dir_name, args.prefix))
+    peak_out_csv = ("%s/%s_peakwise_ann.csv" % (dir_name, args.prefix))
     peak_ann_df = peak_ann_df.drop_duplicates()
-    peak_ann_df.to_csv(peak_out, sep="\t", index=False, na_rep="NA")
+    peak_ann_df.to_csv(peak_out_tsv, sep="\t", index=False, na_rep="NA")
+    peak_ann_df.to_csv(peak_out_csv, index=False, na_rep="NA")
 
     # Print out Gene-centric datatable...
     gene_group_cols = ["gene_id", "gene_name"] + \
@@ -714,9 +719,11 @@ if __name__ == '__main__':
                                             on=gene_group_cols)
             gene_ann_df.loc[:,mnase_samp].fillna(False, inplace=True)
 
-    gene_out = ("%s/%s_genewise_ann.txt" % (dir_name, args.prefix))
+    gene_out_tsv = ("%s/%s_genewise_ann.tsv" % (dir_name, args.prefix))
+    gene_out_csv = ("%s/%s_genewise_ann.csv" % (dir_name, args.prefix))
     gene_ann_df = gene_ann_df.drop_duplicates()
-    gene_ann_df.to_csv(gene_out, sep="\t", index=False, na_rep="NA")
+    gene_ann_df.to_csv(gene_out_tsv, sep="\t", index=False, na_rep="NA")
+    gene_ann_df.to_csv(gene_out_csv,  index=False, na_rep="NA")
 
     olog_file = open(count_file, 'w')
     for i in range(0, len(counts_list)):

@@ -167,7 +167,7 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 		round1_frame = [intragenic_peaks_df, upstream_peaks_2_genes, downstream_peaks_2_genes]
 	else:
 		round1_frame = [intragenic_peaks_df, upstream_peaks_2_genes]
-	round1_df = pd.concat(round1_frame)
+	round1_df = pd.concat(round1_frame, sort=False)
 	# add gene Alias and gene description information
 	round1_alias_df = round1_df.merge(geneAnn_df, how='left', \
 		left_on='gene_id', right_on='ID')
