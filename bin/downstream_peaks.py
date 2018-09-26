@@ -106,7 +106,7 @@ def annotate(prefix, intraButNotUpstream_df, gene_file, maximum_bp, outdir, \
 				closest_gene_df = closest_gene_df.append(closest_gene_neg_series)
 				closest_gene_df = closest_gene_df.append(closest_gene_pos_series)
 				convergent_peaks_arr.append(closest_gene_df)
-				if ~ignore_conv_peaks:
+				if not ignore_conv_peaks:
 					downstream_filtered_arr.append(closest_gene_df)
 
 	downstream_filtered_df = pd.DataFrame(columns=downstream_df.columns)

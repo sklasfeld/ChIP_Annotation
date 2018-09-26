@@ -37,7 +37,7 @@ def compare_bedfiles(peakfile1, peakfile2, outfile, *positional_parameters, \
 	* distance: Minimum number of bp must overlap (Default:2)
 	* verbal: print number of peaks that overlap (Default: False)"""
 
-	distance=2
+	distance=0
 	verbal=False
 	bedtools_path = ""
 
@@ -48,12 +48,21 @@ def compare_bedfiles(peakfile1, peakfile2, outfile, *positional_parameters, \
 	if ('bedtools_path' in keyword_parameters):
 		bedtools_path = keyword_parameters['bedtools_path']
 
+
 	file1_df = pd.read_csv(peakfile1,sep='\t', header=None, dtype=str)
+	if file1_df.shape[1] != 6:
+		sys.exit((("\nERROR: %s is not in BED format!!! " + \
+			"Must be tab delimited with 6 columns only!!!\n") % peakfile1))
 	file2_df = pd.read_csv(peakfile2,sep='\t', header=None, dtype=str)
+	if file2_df.shape[1] != 6:
+		sys.exit((("\nERROR: %s is not in BED format!!! " + \
+			"Must be tab delimited with 6 columns only!!!\n") % peakfile2))
+	
 	chrInFile1 = list(file1_df.iloc[:,0].unique())
 	chrInFile2 = list(file2_df.iloc[:,0].unique())
 	inFile1Not2 = [x for x in chrInFile1 if x not in chrInFile2]
-	if len(inFile1Not2) > 0:
+	inFile2Not1 = [x for x in chrInFile2 if x not in chrInFile1]
+	if len(inFile1Not2) and len(inFile2Not1) > 0:
 		chrInFile1_str = ",".join(chrInFile1)
 		chrInFile2_str = ",".join(chrInFile2)
 		err_msg = (("The chromosomes columns in %s do not match the " \
@@ -79,8 +88,8 @@ def compare_bedfiles(peakfile1, peakfile2, outfile, *positional_parameters, \
 
 	if verbal:
 		# report number of overlap
-		sys.stdout.write("NUMBER OF PEAKS THAT OVERLAP: %s\n" % \
-			peakoverlap(outfile))
+		sys.stdout.write("NUMBER OF PEAKS THAT OVERLAP (%s, %s): %s\n" % \
+			(peakfile1, peakfile2, peakoverlap(outfile)))
 
 	overlap_df = pd.read_csv(outfile, sep='\t', header=None, \
 		names = ["chr", "start", "stop", "name", "signal", "strand", \

@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 
 import pandas as pd
+import sys
 
-def r2_annotate(gene_alist, gene_df, peaks_df, maxdist, out):
+def r2_annotate(gene_alist, gene_df, peaks_df, maxdist, out, \
+	*positional_parameters, **keyword_parameters):
 	""" calculate distance between features
 
 	mandatory parameters:
@@ -10,12 +12,36 @@ def r2_annotate(gene_alist, gene_df, peaks_df, maxdist, out):
 	- peaks_df: peaks dataframe to compare with
 	- maxdist: maximum distance to report, if no maximum, then input -1
 	- out: tab-delimited file with round2 annotations
+	optional parameters:
+	 * gene_alist_cols - columns in `gene_alist` used to annotate the genes 
+	 (eg. gene_name)
 	"""
+	# default keyword parameters
+	gene_alist_cols = []
+	# user-set keyword parameters
+	if ('gene_alist_cols' in keyword_parameters):
+		gene_alist_cols = keyword_parameters['gene_alist_cols']
+
 	narrowPeak_boolean = False
 	if 'qValue' in peaks_df.columns:
 		narrowPeak_boolean = True
+	# check the chromosome names match
+	peaks_chrs_list = list(peaks_df["chr"].unique())
+	genes_chrs_list = list(gene_df["gene_chr"].unique())
+	inFile1Not2 = [x for x in peaks_chrs_list if x not in genes_chrs_list]
+	if len(inFile1Not2) > 0:
+		chrInFile1_str = ",".join(peaks_chrs_list)
+		chrInFile2_str = ",".join(genes_chrs_list)
+		err_msg = (("The chromosomes columns in the narrowPeak file do not " + \
+			" match the chromosomes in the gene file.\nThe " + \
+			"chromosomes in the bed file are %s.\n" + \
+			"The chromosome in gene file are %s") % \
+		( chrInFile1_str, chrInFile2_str))
+		sys.exit(err_msg)
+
 	peaks2genes_df = peaks_df.merge(gene_df, left_on="chr", right_on="gene_chr")
 	
+
 	# negative strand upstream
 	neg_upstream_df = peaks2genes_df[((peaks2genes_df["gene_strand"]=="-") & \
 		(peaks2genes_df["start"] >= peaks2genes_df["gene_stop"]))].copy()
@@ -34,7 +60,6 @@ def r2_annotate(gene_alist, gene_df, peaks_df, maxdist, out):
 		(peaks2genes_df["start"] < peaks2genes_df["gene_stop"])) | \
 		((peaks2genes_df["stop"] > peaks2genes_df["gene_start"]) & \
 		(peaks2genes_df["stop"] <= peaks2genes_df["gene_stop"])))].copy()
-
 
 	# calculate distance for each group
 	#neg_upstream_df.loc[:,"start"].is_copy = False
@@ -57,35 +82,44 @@ def r2_annotate(gene_alist, gene_df, peaks_df, maxdist, out):
 	round2_frames = [neg_upstream_df, neg_downstream_df, pos_upstream_df, \
 		pos_downstream_df, intragenic_df]
 
+	#round2_df = pd.concat(round2_frames, sort=False)
 	round2_df = pd.concat(round2_frames)
 
 	# add alias info about each gene
 	geneAnn_df = pd.read_csv(gene_alist, sep='\t', dtype=str)
 	round2_alias_df = round2_df.merge(geneAnn_df, how='left', \
-		left_on='gene_id', right_on='ID')
+		on='gene_id')
 	# sort the dataframe by peak location
 	round2_alias_df.loc[:,"start"] = round2_alias_df["start"].astype('int64')
 	round2_alias_df.sort_values(by=["chr","start"], axis=0, ascending=True, inplace=True)
-	
-
+	# print information for each peak
 	peaks_group_cols = list(peaks_df.columns[0:6])
-	if narrowPeak_boolean:
-		peaks_group_cols = peaks_group_cols+["qValue"]+list(peaks_df.columns[10:])
-	else:
-		peaks_group_cols += list(peaks_df.columns[6:])
+	## group by peak info
+
 	peak_groups_df = round2_alias_df.groupby(peaks_group_cols)
+	## peak centric columns
+	peaks_centric_cols = peaks_group_cols
+	if narrowPeak_boolean:
+		peaks_centric_cols = peaks_centric_cols +["qValue"]+list(peaks_df.columns[10:])
+	else:
+		peaks_centric_cols = peaks_centric_cols + list(peaks_df.columns[6:])
+	peak_ann_df = round2_alias_df.loc[:,peaks_centric_cols]
+	## put columns that are not peak centric into a peak context	
 	peak_nGenes_series = peak_groups_df.apply(lambda x: len(x["gene_id"].unique()))
 	peak_nGenes_df = peak_nGenes_series.to_frame().reset_index()
 	peak_nGenes_df.columns=peaks_group_cols+['numGenes']
+	peak_ann_df = peak_ann_df.merge(peak_nGenes_df,how='outer',on=peaks_group_cols)
 	peak_gid_series = peak_groups_df.apply(lambda x: ";".join(str(s) for s in list(x["gene_id"])))
 	peak_gid_df = peak_gid_series.to_frame().reset_index()
 	peak_gid_df.columns=peaks_group_cols+['gene_id']
-	peak_gname_series = peak_groups_df.apply(lambda x: ";".join(str(s) for s in list(x["Alias"])))
-	peak_gname_df = peak_gname_series.to_frame().reset_index()
-	peak_gname_df.columns=peaks_group_cols+['gene_name']
-	peak_ann_df = peak_nGenes_df.merge(peak_gid_df,how='outer',on=peaks_group_cols)
-	peak_ann_df = peak_ann_df.merge(peak_gname_df,how='outer',on=peaks_group_cols)
-	peak2gene_info_cols = ['numGenes','gene_id','gene_name']
+	peak_ann_df = peak_ann_df.merge(peak_gid_df,how='outer',on=peaks_group_cols)
+	if len(gene_alist_cols)>0:
+		for gene_ann_col in gene_alist_cols:
+			peak_gname_series = peak_groups_df.apply(lambda x: ";".join(str(s) for s in list(x[gene_ann_col])))
+			peak_gname_df = peak_gname_series.to_frame().reset_index()
+			peak_gname_df.columns=peaks_group_cols+[gene_ann_col]
+			peak_ann_df = peak_ann_df.merge(peak_gname_df,how='outer',on=peaks_group_cols)
+	peak2gene_info_cols = ['numGenes','gene_id'] + gene_alist_cols
 	column_order = peak_ann_df.columns
 	if narrowPeak_boolean:
 		column_order= list(peaks_df.columns[0:6]) + ["qValue"] + \
