@@ -125,8 +125,12 @@ if __name__ == '__main__':
         This must be equal to "compareOtherPeaks" variable \
         (eg.LFY_seedlings)', required=False, default=[])
     parser.add_argument('-pc', '--peakScores', help='if peak overlaps with \
-        old peak then report score of old peak. Otherwise put NA', \
-        action='store_true')
+        old peak then report a feature of the old peak. Otherwise put NA. Any \
+        column in a narrowPeak file can be reported (see \
+        https://genome.ucsc.edu/FAQ/FAQformat.html#format12 for description \
+        of each column).', choices=["chrom", "chromStart", "chromEnd", "name", \
+        "score", "strand", \
+        "singalValue", "pValue", "qValue", "peak"])
     parser.add_argument('-oc', '--otherChipGeneAnn', help='tab-delimited \
         text file(s) that contain gene-wise annotation information of other \
         ChIP experiments to compare with genes annotated in this sample. \
@@ -388,9 +392,20 @@ if __name__ == '__main__':
                                (old_peak_prefix, overlap_count_x))
             newPeaksInOldPeaks = list(overlap_df_x["name"])
             if args.peakScores:
+                peakb_feat_dic = {"chrom" : "chr_b", \
+                    "chromStart" : "start_b", "chromEnd" : "stop_b", \
+                    "name": "name_b", "score": "signal_b", \
+                    "strand": "strand_b", "signalValue" : "fold_change_b", \
+                    "pValue" : "pValue_b", "qValue" : "qValue_b", 
+                    "peak": "summit_b"}
+                if not peakb_feat_dic[args.peakScores] in list(overlap_df_x.columns):
+                    score_col_unavailable = (("\nERROR: %s column is not available in %s." + \
+                        " You may want to remove/edit your --peakScore parameter" +
+                        " or use a different file.\n") % (args.peakScores, old_peak_file))
+                    sys.exit(score_col_unavailable)
                 peakBScoresInPeakA_df =overlap_df_x.groupby(bed_cols)
                 peakBScores_series = peakBScoresInPeakA_df.apply( \
-                    lambda x: ";".join(str(s) for s in list(x["signal_b"])))
+                    lambda x: ";".join(str(s) for s in list(x[peakb_feat_dic[args.peakScores]])))
                 peakBScores_df = peakBScores_series.to_frame().reset_index()
                 peakBScores_df = \
                     peakBScores_df.rename(columns={0: (old_peak_prefix)})

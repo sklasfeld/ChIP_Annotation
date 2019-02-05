@@ -53,14 +53,20 @@ def compare_bedfiles(peakfile1, peakfile2, outfile, *positional_parameters, \
 		bedtools_path = keyword_parameters['bedtools_path']
 
 
+	
+	
+
 	file1_df = pd.read_csv(peakfile1,sep='\t', header=None, dtype=str)
-	if file1_df.shape[1] != 6:
-		sys.exit((("\nERROR: %s is not in BED format!!! " + \
-			"Must be tab delimited with 6 columns only!!!\n") % peakfile1))
+	ncols_file1 = file1_df.shape[1]
+	if ncols_file1 != 6 and ncols_file1 != 10:
+		sys.exit((("\nERROR: %s is not in BED format nor NARROWPEAK format!!! " + \
+			"Must be tab delimited with 6 or 9 columns only!!!\n") % peakfile1))
+
 	file2_df = pd.read_csv(peakfile2,sep='\t', header=None, dtype=str)
-	if file2_df.shape[1] != 6:
-		sys.exit((("\nERROR: %s is not in BED format!!! " + \
-			"Must be tab delimited with 6 columns only!!!\n") % peakfile2))
+	ncols_file2 = file2_df.shape[1]
+	if ncols_file2 != 6 and ncols_file2 != 10:
+		sys.exit((("\nERROR: %s is not in BED format nor NARROWPEAK format!!! " + \
+			"Must be tab delimited with 6 or 9 columns only!!!\n") % peakfile2))
 	
 	chrInFile1 = list(file1_df.iloc[:,0].unique())
 	chrInFile2 = list(file2_df.iloc[:,0].unique())
@@ -95,16 +101,37 @@ def compare_bedfiles(peakfile1, peakfile2, outfile, *positional_parameters, \
 		# report number of overlap
 		sys.stdout.write("NUMBER OF PEAKS THAT OVERLAP (%s, %s): %i\n" % \
 			(peakfile1, peakfile2, peakoverlap(outfile)))
+	
 
-	overlap_df = pd.read_csv(outfile, sep='\t', header=None, \
-		names = ["chr", "start", "stop", "name", "signal", "strand", \
-		"chr_b","start_b","stop_b","name_b","signal_b","strand_b", \
-		"overlap"], \
-		dtype={"chr" : object, "start" : np.int64, \
-        "stop" : np.int64, "name" : object, "signal" : np.float64, \
-        "strand":object, "chr_b" : object, "start_b" : np.int64, \
-        "stop_b" : np.int64, "name_b" : object, "signal_b" : np.float64, \
-        "strand_b":object,"overlap":np.int64})
+	colsList_for_file1 = ["chr", "start", "stop", "name", "signal", "strand", \
+		"fold_change", "pValue", "qValue", "summit"]
+	colsList_for_file2 = ["chr_b", "start_b", "stop_b", "name_b", "signal_b", \
+		"strand_b", "fold_change_b", "pValue_b", "qValue_b", "summit_b"]
+	col_dtype_dict = {"chr" : object, "start" : np.int64, \
+		"stop" : np.int64, "name" : object, "signal" : np.float64, \
+		"strand":object, "fold_change": np.float64, \
+		"pValue" : np.float64, "qValue" : np.float64, \
+		"summit" : np.int64, "chr_b" : object, "start_b" : np.int64, \
+		"stop_b" : np.int64, "name_b" : object, "signal_b" : np.float64, \
+		"strand_b" : object, "fold_change_b": np.float64, \
+		"pValue_b" : np.float64, "qValue_b" : np.float64, \
+		"summit_b" : np.int64, "overlap":np.int64}
+
+	final_col_list=[]
+	if ncols_file1 == 6 and ncols_file2 == 6:
+		final_col_list = colsList_for_file1[0:6] + colsList_for_file2[0:6] + \
+			['overlap']
+	elif (ncols_file1 == 10 and ncols_file2 == 6):
+		final_col_list = colsList_for_file1 + colsList_for_file2[0:6] + \
+			['overlap']
+	elif (ncols_file1 == 6 and ncols_file2 == 10):
+		final_col_list = colsList_for_file1[0:6] + colsList_for_file2 + \
+			['overlap']
+	else:
+		final_col_list = colsList_for_file1 + colsList_for_file2 + \
+			['overlap']
+	overlap_df = pd.read_csv(outfile, sep='\t', header=None, names = final_col_list, \
+			dtype=col_dtype_dict)
 	return(overlap_df)
 
 
