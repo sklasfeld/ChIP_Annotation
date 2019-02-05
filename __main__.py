@@ -35,6 +35,15 @@ def uniq_vals_incommon(list1, list2):
     """find unique values in common between two lists"""
     return list(set([x for x in list1 if x in list2]))
 
+def listOrFalse(res_series):
+    false_list = pd.Series([True if x == False or x == "False" else False for x in res_series])
+    if false_list.all():
+        return False
+    else:
+        string_list = ";".join([str(y) for y in res_series if (y != False and y != "False")])
+        return string_list
+
+
 
 def wc(file_name, verbose=False, samtools_path=""):
     """count the number of lines in a file or reads in a sam/bam file"""
@@ -260,8 +269,10 @@ if __name__ == '__main__':
         compareRNAdiffExpCols = args.compareRNAdiffExpNames
 
     # set paths 
-    args.bedtools_path = os.path.expanduser(args.bedtools_path)+"/"
-    args.samtools_path = os.path.expanduser(args.bedtools_path)+"/"
+    if len(args.bedtools_path) > 0:
+        args.bedtools_path = os.path.expanduser(args.bedtools_path)+"/"
+    if len(args.samtools_path) > 0:
+        args.samtools_path = os.path.expanduser(args.bedtools_path)+"/"
 
 
     if len(args.otherChipGeneAnn)>0 and len(args.otherChipPrefix)>0:
@@ -943,12 +954,15 @@ if __name__ == '__main__':
     ## a different ChIP sample (compareOtherPeaks)
     if args.compareOtherPeaks:
         for peak_sample in args.compareOtherPeaksNames:
-            gene_peakcomp_series = gene_groups_df.apply(lambda x: x[peak_sample].any())
+            #gene_peakcomp_series = gene_groups_df.apply(lambda x: x[peak_sample].any() != False)
+            #gene_peakcomp_series = gene_groups_df.apply(lambda x: ";".join([str(y) for y in x[peak_sample] if y != False and y != "False"]))
+            gene_peakcomp_series = gene_groups_df.apply(lambda x:listOrFalse(x[peak_sample]))
             gene_peakcomp_df = gene_peakcomp_series.to_frame().reset_index()
             gene_peakcomp_df.columns = ['gene_id', peak_sample]
             gene_ann_df = gene_ann_df.merge(gene_peakcomp_df, how='left', \
                                             on='gene_id')
             gene_ann_df.loc[:,peak_sample].fillna(False, inplace=True)
+            
     ## list True if any of the peaks that the gene is annotated to is found in a
     ## a motif (motifFiles)
     if args.motifFiles:

@@ -35,16 +35,20 @@ def compare_bedfiles(peakfile1, peakfile2, outfile, *positional_parameters, \
 	
 	optional parameters:
 	* distance: Minimum number of bp must overlap (Default:2)
+	* keep_tmps: keep temp files made in this
 	* verbal: print number of peaks that overlap (Default: False)"""
 
 	distance=0
 	verbal=False
+	keep_tmps=False
 	bedtools_path = ""
 
 	if ('distance' in keyword_parameters):
 		distance = keyword_parameters['distance']
 	if ('verbal' in keyword_parameters):
 		verbal = keyword_parameters['verbal']
+	if ('keep_tmps' in keyword_parameters):
+		keep_tmps = keyword_parameters['keep_tmps']
 	if ('bedtools_path' in keyword_parameters):
 		bedtools_path = keyword_parameters['bedtools_path']
 
@@ -62,7 +66,7 @@ def compare_bedfiles(peakfile1, peakfile2, outfile, *positional_parameters, \
 	chrInFile2 = list(file2_df.iloc[:,0].unique())
 	inFile1Not2 = [x for x in chrInFile1 if x not in chrInFile2]
 	inFile2Not1 = [x for x in chrInFile2 if x not in chrInFile1]
-	if len(inFile1Not2) and len(inFile2Not1) > 0:
+	if len(inFile1Not2) > 0 and len(inFile2Not1) > 0:
 		chrInFile1_str = ",".join(chrInFile1)
 		chrInFile2_str = ",".join(chrInFile2)
 		err_msg = (("The chromosomes columns in %s do not match the " \
@@ -83,12 +87,13 @@ def compare_bedfiles(peakfile1, peakfile2, outfile, *positional_parameters, \
 	cmd(cmd2, verbal)
 
 	# move tmp file
-	cmd3=("rm %s" % tmp_intersect1)
-	cmd(cmd3, verbal)
+	if not keep_tmps:
+		cmd3=("rm %s" % tmp_intersect1)
+		cmd(cmd3, verbal)
 
 	if verbal:
 		# report number of overlap
-		sys.stdout.write("NUMBER OF PEAKS THAT OVERLAP (%s, %s): %s\n" % \
+		sys.stdout.write("NUMBER OF PEAKS THAT OVERLAP (%s, %s): %i\n" % \
 			(peakfile1, peakfile2, peakoverlap(outfile)))
 
 	overlap_df = pd.read_csv(outfile, sep='\t', header=None, \

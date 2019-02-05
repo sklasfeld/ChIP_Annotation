@@ -140,29 +140,29 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 	# first ignore peaks downstream (-id) of genes since upstream is preferred
 	upsteamgenes_file = ("%s/%s_closest_id.txt" % (dir_name, prefix))
 	upstream_peaks_df = pd.DataFrame()
-	if not os.path.isfile(upsteamgenes_file):
-		if ignore_conv_peaks:
-			upstream_peaks_df = upstream_peaks.annotate(prefix, \
-				intergenic_peaks_df, geneBed_file, bp_upstream_filter, \
-				dir_name, ignore_conv_peaks=ignore_conv_peaks)
-		else:
-			upstream_peaks_df = upstream_peaks.annotate(prefix, \
-				intergenic_peaks_df, geneBed_file, bp_upstream_filter, \
-				dir_name)
+	#if not os.path.isfile(upsteamgenes_file):
+	if ignore_conv_peaks:
+		upstream_peaks_df = upstream_peaks.annotate(prefix, \
+			intergenic_peaks_df, geneBed_file, bp_upstream_filter, \
+			dir_name, ignore_conv_peaks=ignore_conv_peaks)
 	else:
-		sys.stderr.write("The file %s already exists so I am not going to overwrite it\n" \
-			% upsteamgenes_file)
-		# get upstream distance output into df
-		upstream_peaks_df = pd.read_csv(upsteamgenes_file, sep="\t", header=None, \
-			names=["chr", "start", "stop", "name", "signal", "strand", \
-			"tss_chr", "tss_start", "tss_stop", "gene_id", "tss_score", \
-			"tss_strand", "distance_from_gene"], \
-			index_col=False, dtype={"chr" : object, \
-			"start" : np.int64, "stop" : np.int64, "name" : object, \
-			"signal" : np.float64, "strand":object, "tss_chr" : object, \
-			"tss_start" : np.int64, "tss_stop" : np.int64, \
-			"gene_id" : object, "tss_score" : np.float64, \
-			"tss_strand":object, "distance_from_gene": np.float64})
+		upstream_peaks_df = upstream_peaks.annotate(prefix, \
+			intergenic_peaks_df, geneBed_file, bp_upstream_filter, \
+			dir_name)
+	#else:
+	#	sys.stderr.write("The file %s already exists so I am not going to overwrite it\n" \
+	#		% upsteamgenes_file)
+	#	# get upstream distance output into df
+	#	upstream_peaks_df = pd.read_csv(upsteamgenes_file, sep="\t", header=None, \
+	#		names=["chr", "start", "stop", "name", "signal", "strand", \
+	#		"tss_chr", "tss_start", "tss_stop", "gene_id", "tss_score", \
+	#		"tss_strand", "distance_from_gene"], \
+	#		index_col=False, dtype={"chr" : object, \
+	#		"start" : np.int64, "stop" : np.int64, "name" : object, \
+	#		"signal" : np.float64, "strand":object, "tss_chr" : object, \
+	#		"tss_start" : np.int64, "tss_stop" : np.int64, \
+	#		"gene_id" : object, "tss_score" : np.float64, \
+	#		"tss_strand":object, "distance_from_gene": np.float64})
 	
 	upstream_peaks_df = upstream_peaks_df.merge(peaks_df, how = 'left', on=list(peaks_df.columns[:6]))
 	# STEP 3: Collect Peaks that are DOWNSTREAM of genes
