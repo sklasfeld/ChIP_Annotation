@@ -198,10 +198,11 @@ if __name__ == '__main__':
         names of the type of motifs given in each bed file in --motifFiles. \
         This list must be of equal length to the "motifFiles" variable \
         (eg.LFY1)', required=False, default=[])
-    parser.add_argument('-ms', '--callMotifBySummit', action='store_true', \
-        help='If this is set AND `narrowpeak_file` is defined, then call the \
-        presence of motifs by using +/- 250 bp of the summit rather than \
-        the peak region')
+    parser.add_argument('-ms', '--callMotifBySummit', , nargs=2, type=np.int64, 
+        help='If `narrowpeak_file` is defined, then call the \
+        presence of motifs by using $D bp downstream and $U bp upstream of the \
+        summit rather than the peak region. For example to use -100/+250 bp \
+        from the summit you would set `--callMotifBySummit 100 250`')
     parser.add_argument('-df', '--dnase_files', nargs='*', help='list of bed \
         files with locations of DNase Hypersensitivity sites', required=False)
     parser.add_argument('-dn', '--dnase_names', nargs='*', help='list giving \
@@ -431,11 +432,13 @@ if __name__ == '__main__':
     if args.motifFiles:
         motifSearchPeaks=""
         if args.callMotifBySummit and args.narrowpeak_file:
-                motifSearchPeaks = ("%s/%s_250summit.txt" % (dir_name, \
-                                                             args.prefix))
+                bp_downstream_of_summit=args.callMotifBySummit[0]
+                bp_upstream_of_summit=args.callMotifBySummit[1]
+                motifSearchPeaks = ("%s/%s_summitPlus%iMinus%i.txt" % (dir_name, \
+                    args.prefix, bp_downstream_of_summit, bp_upstream_of_summit))
                 summit_df = peaks_df.copy()
-                summit_df["start"]=peaks_df["start"] + peaks_df["summit"] - 250
-                summit_df["stop"]=peaks_df["start"] + peaks_df["summit"] + 251
+                summit_df["start"]=peaks_df["start"] + peaks_df["summit"] - bp_downstream_of_summit
+                summit_df["stop"]=peaks_df["start"] + peaks_df["summit"] + bp_upstream_of_summit
                 summit_df = summit_df.loc[:,bed_cols]
                 summit_df.to_csv(motifSearchPeaks, sep="\t", header=False, \
                     index=False)

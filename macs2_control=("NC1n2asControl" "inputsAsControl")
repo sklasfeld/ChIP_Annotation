@@ -1,0 +1,55 @@
+macs2_control=("NC1n2asControl" "inputsAsControl")
+exp_name=("FD_WT_Rep1n2" "FD_WT_Rep3n4" "TFL1_WT_Rep1n2" "TFL1_WT_Rep3n4" "TFL1_fd_Rep1n2")
+file_prefix=("FDChIP_1n2" "FDChIP_3n4" "TFL1ChIP_1n2" "TFL1ChIP_3n4" "fdTFL1Chip_1n2")
+
+
+for macs2Ctrl in ${macs2_control[@]}; do
+	macs2_dir="greenscreen3_filter_noModel195_${macs2Ctrl}"
+	annotion_out_dir="annotations/greenscreen3/${macs2Ctrl}_qval10"
+	for ((i = 0; i < ${#exp_name[@]}; ++i)); do
+		other_macs2_control="inputsAsControl"
+		if [ ${macs2Ctrl} == "inputsAsControl" ]; then
+			other_macs2_control="NC1n2asControl"
+		fi
+		echo "${exp_name[$i]} (MACS2 control:${macs2Ctrl})"
+		python ~/Downloads/ChIP_Annotation ${exp_name[$i]} ${annotion_out_dir} \
+			${macs2_dir}/qval10/${file_prefix[$i]}_pooled_qval10_peaks.bed \
+			~/Araport11/Araport11_GFF3_ProteinCodingANDmiRNAgenes_ann.txt \
+	        ~/Araport11/Araport11_GFF3_ProteinCodingANDmiRNAgenes.bed \
+	        -tss 3000 -tts 0 -ga Name locus_type \
+	        -n ${macs2_dir}/qval10/${file_prefix[$i]}_pooled_qval10_peaks.bed \
+	        -ps ~/Projects/TFL1/ChIPseq/V3/${macs2_dir}/qval10/FDChIP_1n2_pooled_qval10_peaks.narrowPeak \
+	        ~/Projects/TFL1/ChIPseq/V3/${macs2_dir}/qval10/FDChIP_3n4_pooled_qval10_peaks.narrowPeak \
+	        ~/Projects/TFL1/ChIPseq/V3/${macs2_dir}/qval10/TFL1ChIP_1n2_pooled_qval10_peaks.narrowPeak \
+	        ~/Projects/TFL1/ChIPseq/V3/${macs2_dir}/qval10/TFL1ChIP_3n4_pooled_qval10_peaks.narrowPeak \
+	        ~/Projects/TFL1/ChIPseq/V3/${macs2_dir}/qval10/fdTFL1Chip_1n2_pooled_qval10_peaks.narrowPeak \
+	        ~/Projects/TFL1/ChIPseq/V3/greenscreen3_filter_noModel195_${other_macs2_control}/qval10/FDChIP_1n2_pooled_qval10_peaks.narrowPeak \
+	        ~/Projects/TFL1/ChIPseq/V3/greenscreen3_filter_noModel195_${other_macs2_control}/qval10/FDChIP_3n4_pooled_qval10_peaks.narrowPeak \
+	        ~/Projects/TFL1/ChIPseq/V3/greenscreen3_filter_noModel195_${other_macs2_control}/qval10/TFL1ChIP_1n2_pooled_qval10_peaks.narrowPeak \
+	        ~/Projects/TFL1/ChIPseq/V3/greenscreen3_filter_noModel195_${other_macs2_control}/qval10/TFL1ChIP_3n4_pooled_qval10_peaks.narrowPeak \
+	        ~/Projects/TFL1/ChIPseq/V3/greenscreen3_filter_noModel195_${other_macs2_control}/qval10/fdTFL1Chip_1n2_pooled_qval10_peaks.narrowPeak \
+	        ~/Projects/TFL1/ChIPseq/V4/greenscreen3_filter_noModel224_inputsAsControl/qval10/FD_WT_pooled_qval10_peaks.narrowPeak \
+	        ~/Projects/TFL1/ChIPseq/V4/greenscreen3_filter_noModel224_inputsAsControl/qval10/TFL1_WT_pooled_qval10_peaks.narrowPeak \
+        	~/Projects/TFL1/ChIPseq/V4/greenscreen3_filter_noModel224_inputsAsControl/qval10/TFL1_Seg_pooled_qval10_peaks.narrowPeak \
+        	~/Projects/TFL1/ChIPseq/V4/greenscreen3_filter_noModel224_inputsAsControl/qval10/TFL1_WTnSeg_pooled_qval10_peaks.narrowPeak \
+        	~/Projects/TFL1/ChIPseq/V4/greenscreen3_filter_noModel224_NC3n4asControl/qval10/FD_WT_pooled_qval10_peaks.narrowPeak \
+	        ~/Projects/TFL1/ChIPseq/V4/greenscreen3_filter_noModel224_NC3n4asControl/qval10/TFL1_WT_pooled_qval10_peaks.narrowPeak \
+        	~/Projects/TFL1/ChIPseq/V4/greenscreen3_filter_noModel224_NC3n4asControl/qval10/TFL1_Seg_pooled_qval10_peaks.narrowPeak \
+        	~/Projects/TFL1/ChIPseq/V4/greenscreen3_filter_noModel224_NC3n4asControl/qval10/TFL1_WTnSeg_pooled_qval10_peaks.narrowPeak \
+        	-pn FD_WT_1n2_macs2_${macs2Ctrl}_qval10 \
+        	FD_WT_3n4_macs2_${macs2Ctrl}_qval10 \
+        	TFL1_WT_1n2_macs2_${macs2Ctrl}_qval10 \
+        	TFL1_WT_3n4_macs2_${macs2Ctrl}_qval10 \
+        	TFL1_fd_1n2_macs2_${macs2Ctrl}_qval10 \
+        	FD_WT_1n2_macs2_${other_macs2_control}_qval10 \
+        	FD_WT_3n4_macs2_${other_macs2_control}_qval10 \
+        	TFL1_WT_1n2_macs2_${other_macs2_control}_qval10 \
+        	TFL1_WT_3n4_macs2_${other_macs2_control}_qval10 \
+        	TFL1_fd_1n2_macs2_${other_macs2_control}_qval10 \
+        	FD_WT_5n6_inputsAsControl_qval10 TFL1_WT_5n6_inputsAsControl_qval10 \
+        	TFL1_Seg_1n2_inputsAsControl_qval10 TFL1_WT_5n6_Seg_1n2_inputsAsControl_qval10 \
+        	FD_WT_5n6_NC3n4asControl_qval10 TFL1_WT_5n6_NC3n4asControl_qval10 \
+        	TFL1_Seg_1n2_NC3n4asControl_qval10 TFL1_WT_5n6_Seg_1n2_NC3n4asControl_qval10 \
+        	-pc qValue
+    done
+done
