@@ -198,7 +198,7 @@ if __name__ == '__main__':
         names of the type of motifs given in each bed file in --motifFiles. \
         This list must be of equal length to the "motifFiles" variable \
         (eg.LFY1)', required=False, default=[])
-    parser.add_argument('-ms', '--callMotifBySummit', , nargs=2, type=np.int64, 
+    parser.add_argument('-ms', '--callMotifBySummit', nargs=2, type=np.int64, 
         help='If `narrowpeak_file` is defined, then call the \
         presence of motifs by using $D bp downstream and $U bp upstream of the \
         summit rather than the peak region. For example to use -100/+250 bp \
