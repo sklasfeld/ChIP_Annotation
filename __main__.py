@@ -180,6 +180,18 @@ if __name__ == '__main__':
         help='list of prefixes for the RNA samples that you want to compare \
         with. This must be equal to "compareRNAdiffExp" variable \
         (eg.RNA_wtVmutant)', required=False, default=[])
+    parser.add_argument('-rl', '--rnaDESignificance', nargs=3, \
+        help='using the tab-delimited text files set by the `compareRNAdiffExp` \
+        parameter, we can limit which genes are defined as differentially expressed. \
+        Note that this will only affect which genes are used for round 2 annotation \
+        since round 2 only annotates based on DE genes. It will not \
+        affect the columns that show differential expression values. This \
+        parameter requires 3 values:[column] [min/max] [value]. For example, \
+        if you want to limit DE genes to genes output from DESeq2 with adjp<=0.01 \
+        then set this to `--rnaDESignificance adjp max 0.01`. Another example is \
+        if you want to limit DE genes to genes output from DESeq2 with \
+        log2FoldChange>=1 then set this to `--rnaDESignificance log2FoldChange min 1`.', \
+        required=False)
     parser.add_argument('-rc', '--rnaScores', help='Set this parameter to the \
         column name(s) you would like to report from each \
         `compareRNAdiffExp` files. If you want to print the same columns \
@@ -224,7 +236,14 @@ if __name__ == '__main__':
         action='store_true')
 
     args = parser.parse_args()
-
+    if args.rnaDESignificance:
+        if args.rnaDESignificance[1].lower() != "max" and \
+            args.rnaDESignificance[1].lower() != "min":
+            err_msg = ("ERROR in `rnaDESignificance` parameter format." + \
+                "The second value should be max or min. Three values are required.")
+            sys.exit(err_msg)
+        else:
+            args.rnaDESignificance[1] = args.rnaDESignificance[1].lower()
     if args.compareOtherPeaks or args.compareOtherPeaksNames:
         if len(args.compareOtherPeaks) != len(args.compareOtherPeaksNames):
             err_msg = "compareOtherPeaks and compareOtherPeaksNames must " + \
@@ -323,9 +342,9 @@ if __name__ == '__main__':
     if args.mnase_files or args.mnase_names:
         if len(args.mnase_files) != len(args.mnase_names):
             err_msg = "mnase_files and mnase_names must be of equal length!"
-            err_msg = ("%s\mnase_files length = %i" % (err_msg, \
+            err_msg = ("%smnase_files length = %i" % (err_msg, \
                 len(args.mnase_files)))
-            err_msg = ("%s\mnase_names length = %i\n" % (err_msg, \
+            err_msg = ("%smnase_names length = %i\n" % (err_msg, \
                 len(args.mnase_names)))
             sys.exit(err_msg)
     if len(args.gene_alist_cols)<1:
@@ -637,16 +656,35 @@ if __name__ == '__main__':
                     sys.exit(geneIDerr)
             if len(args.rnaScores) > 0:
                 for rna_sampl_col in rna_score_cols[rna_sample_file]:
+
                     if rna_sampl_col not in list(rna_sample_df.columns):
                         rna_cols_str = ",".join(list(rna_sample_df.columns))
-                        rnaScoreerr= ("\nThe %s column cannot be found " + \
+                        rnaScoreerr= (("\nThe %s column cannot be found " + \
                             "in %s.\nPlease check the column names.\n" + \
-                            "COLUMNS FOUND: %s\n" % \
-                            (rna_score_cols[rna_sample_file], rna_sample_file, \
-                                rna_cols_str))
+                            "COLUMNS FOUND: %s\n") % \
+                            (rna_sampl_col, rna_sample_file, rna_cols_str))
                         sys.exit(rnaScoreerr) 
             # rna_sample_name = args.compareRNAdiffExpNames[rna_samp]
+            
             de_genes = list(rna_sample_df.loc[:,"gene_id"])
+            if args.rnaDESignificance:
+                rna_de_sig_col=args.rnaDESignificance[0]
+                rna_de_sig_val=np.float64(args.rnaDESignificance[2])
+                if rna_de_sig_col in list(rna_sample_df.columns):
+                    if args.rnaDESignificance[1] == "max":
+
+                        de_genes=list(rna_sample_df.loc[ \
+                            rna_sample_df[rna_de_sig_col]<=rna_de_sig_val,"gene_id"])
+                    else:
+                        de_genes=list(rna_sample_df.loc[ \
+                            rna_sample_df[rna_de_sig_col]>=rna_de_sig_val,"gene_id"])
+                else:
+                    rnaScoreerr= (("\nThe %s column cannot be found " + \
+                        "in %s.\nPlease check the column names.\n" + \
+                        "COLUMNS FOUND: %s\n") % \
+                        (rna_de_sig_col, rna_sample_file, list(rna_sample_df.columns)))
+                    sys.exit(rnaScoreerr)
+
             # RNAseqs_dict[rna_sample_name] = de_genes
             all_de_genes += de_genes
         all_de_genes = list(set(all_de_genes))
