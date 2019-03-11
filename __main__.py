@@ -114,9 +114,14 @@ if __name__ == '__main__':
     parser.add_argument('-icv', '--ignore_conv_peaks', help='do not output \
         peak information of peaks that annotate to two different peaks ', \
         action='store_true')
+    parser.add_argument('-r2', '--round2ann', help='If `--compareRNAdiffExp` \
+        is set, annotate outlier peaks (peaks not annotated in round 1) to \
+        differentially expressed genes.', action='store_true')
     parser.add_argument('-of', '--outlier_filter', required=False, type=int,
-        help='maximum bp distance upstream/downstream of genes of outlier \
-        peaks (peaks not annotated in round 1) (default:10000)', default=10000)
+        help='If `--compareRNAdiffExp` and `--round2ann` is set, this is the \
+        maximum bp distance upstream/downstream of genes of outlier peaks \
+        (peaks not annotated \
+        in round 1) (default:10000).', default=10000)
     parser.add_argument('-ps', '--compareOtherPeaks', nargs='*', help='list of \
         bed files that you want to compare with the peaks in this sample.', \
         required=False)
@@ -689,26 +694,26 @@ if __name__ == '__main__':
             all_de_genes += de_genes
         all_de_genes = list(set(all_de_genes))
         de_genes_df = gene_bedfile_df[gene_bedfile_df['gene_id'].isin(all_de_genes)]
+        if args.round2ann:
+            round2_ann_file = ("%s/%s_r2_peak_annotations.txt" % (dir_name, args.prefix))
+            round2_peaks = round2_annotation.r2_annotate(gene_alist, de_genes_df, 
+                outlier_df, args.outlier_filter, round2_ann_file, \
+                gene_alist_cols=args.gene_alist_cols)
+            round2_peaks["roundOfAnnotation"] = 2
+            orphan_peaks_df = \
+                outlier_df[~outlier_df["name"].isin(round2_peaks["name"])]
 
-        round2_ann_file = ("%s/%s_r2_peak_annotations.txt" % (dir_name, args.prefix))
-        round2_peaks = round2_annotation.r2_annotate(gene_alist, de_genes_df, 
-            outlier_df, args.outlier_filter, round2_ann_file, \
-            gene_alist_cols=args.gene_alist_cols)
-        round2_peaks["roundOfAnnotation"] = 2
-        orphan_peaks_df = \
-            outlier_df[~outlier_df["name"].isin(round2_peaks["name"])]
-
-        ### Print number of peaks annotated in round 2
-        round2_count = len(round2_peaks.loc[:, bed_cols].drop_duplicates())
-        counts_list.append("peaks annotated in round2\t%i" % \
-                           (round2_count))
-        ### Print number of peaks annotated in round 1 AND 2
-        counts_list.append("total peaks annotated\t%i" \
-            % (round1_count + round2_count))
-        # get dataframe with all peak annotations including unassigned peaks
-        all_peaks_frame = [round1_peaks, round2_peaks, orphan_peaks_df]
-        #all_peaks_df = pd.concat(all_peaks_frame, sort=False)
-        all_peaks_df = pd.concat(all_peaks_frame)
+            ### Print number of peaks annotated in round 2
+            round2_count = len(round2_peaks.loc[:, bed_cols].drop_duplicates())
+            counts_list.append("peaks annotated in round2\t%i" % \
+                               (round2_count))
+            ### Print number of peaks annotated in round 1 AND 2
+            counts_list.append("total peaks annotated\t%i" \
+                % (round1_count + round2_count))
+            # get dataframe with all peak annotations including unassigned peaks
+            all_peaks_frame = [round1_peaks, round2_peaks, orphan_peaks_df]
+            #all_peaks_df = pd.concat(all_peaks_frame, sort=False)
+            all_peaks_df = pd.concat(all_peaks_frame)
 
     else:
         orphan_peaks_df = outlier_df
@@ -767,13 +772,14 @@ if __name__ == '__main__':
 
     # Assign DE genes to peaks
     if args.compareRNAdiffExp:
-        gene_count_r2 = \
-            len(all_peaks_df.loc[all_peaks_df["roundOfAnnotation"] == 2, \
-                "gene_id"].unique())
-        counts_list.append("genes annotated in round2\t%i" % \
-                           (gene_count_r2))
-        counts_list.append("total genes annotated\t%i" % \
-                           (gene_count_r1 + gene_count_r2))
+        if args.round2ann:
+            gene_count_r2 = \
+                len(all_peaks_df.loc[all_peaks_df["roundOfAnnotation"] == 2, \
+                    "gene_id"].unique())
+            counts_list.append("genes annotated in round2\t%i" % \
+                               (gene_count_r2))
+            counts_list.append("total genes annotated\t%i" % \
+                               (gene_count_r1 + gene_count_r2))
 
         ## Which genes are DE according to the RNA analysis?
         for rna_samp in range(0, len(args.compareRNAdiffExp)):
