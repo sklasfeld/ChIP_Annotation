@@ -241,7 +241,7 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 				sys.exit("\nAwkward!!! There are no INTRAGENIC peaks annotated in round 1...\n"+ \
 			"Failure to pass Round 1 Annotation has closed script...")
 	#round1_df = pd.concat(round1_frame,sort=False)
-	round1_df = pd.concat(round1_frame)
+	round1_df = pd.concat(round1_frame, sort=True)
 	# add gene Alias and gene description information
 
 	round1_alias_df = round1_df.merge(geneAnn_df, how='left', on='gene_id')

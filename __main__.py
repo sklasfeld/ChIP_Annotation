@@ -715,14 +715,14 @@ if __name__ == '__main__':
             #all_peaks_df = pd.concat(all_peaks_frame, sort=False)
         else:
             all_peaks_frame = [round1_peaks, orphan_peaks_df]
-        all_peaks_df = pd.concat(all_peaks_frame)
+        all_peaks_df = pd.concat(all_peaks_frame, sort=True)
 
     else:
         orphan_peaks_df = outlier_df
         # get dataframe with all peak annotations including unassigned peaks
         all_peaks_frame = [round1_peaks, orphan_peaks_df]
-        #all_peaks_df = pd.concat(all_peaks_frame, sort=False)
-        all_peaks_df = pd.concat(all_peaks_frame)
+        all_peaks_df = pd.concat(all_peaks_frame, sort=True)
+        #all_peaks_df = pd.concat(all_peaks_frame)
 
 
 
