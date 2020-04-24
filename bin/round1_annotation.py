@@ -6,7 +6,7 @@ from collections import defaultdict
 import pandas as pd
 import numpy as np
 import math
-import upstream_peaks
+import bin.upstream_peaks
 import subprocess
 
 # print and run bash command
@@ -142,11 +142,11 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 	upstream_peaks_df = pd.DataFrame()
 	#if not os.path.isfile(upsteamgenes_file):
 	if ignore_conv_peaks:
-		upstream_peaks_df = upstream_peaks.annotate(prefix, \
+		upstream_peaks_df = bin.upstream_peaks.annotate(prefix, \
 			intergenic_peaks_df, geneBed_file, bp_upstream_filter, \
 			dir_name, ignore_conv_peaks=ignore_conv_peaks)
 	else:
-		upstream_peaks_df = upstream_peaks.annotate(prefix, \
+		upstream_peaks_df = bin.upstream_peaks.annotate(prefix, \
 			intergenic_peaks_df, geneBed_file, bp_upstream_filter, \
 			dir_name)
 	#else:

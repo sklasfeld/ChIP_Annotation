@@ -112,13 +112,14 @@ if __name__ == '__main__':
         annotation is limited to downstream genes of this many bp \
         (default: 100)', default=100, type=int)
     parser.add_argument('-icv', '--ignore_conv_peaks', help='do not output \
-        peak information of peaks that annotate to two different peaks ', \
+        peak information of peaks that annotate to two different peaks ',
         action='store_true')
-    parser.add_argument('-r2', '--round2ann', help='If `--compareRNAdiffExp` \
-        is set, annotate outlier peaks (peaks not annotated in round 1) to \
-        differentially expressed genes.', action='store_true')
+    parser.add_argument('-r2', '--round2ann', help='Annotate outlier peaks \
+        (peaks not annotated in round 1) to differentially expressed genes. \
+        For this parameter, set the RNA differential expression output files',
+        nargs='*')
     parser.add_argument('-of', '--outlier_filter', required=False, type=int,
-        help='If `--compareRNAdiffExp` and `--round2ann` is set, this is the \
+        help='If `--round2ann` is set, this is the \
         maximum bp distance upstream/downstream of genes of outlier peaks \
         (peaks not annotated \
         in round 1) (default:10000).', default=10000)
@@ -186,8 +187,8 @@ if __name__ == '__main__':
         with. This must be equal to "compareRNAdiffExp" variable \
         (eg.RNA_wtVmutant)', required=False, default=[])
     parser.add_argument('-rl', '--rnaDESignificance', nargs=3, \
-        help='using the tab-delimited text files set by the `compareRNAdiffExp` \
-        parameter, we can limit which genes are defined as differentially expressed. \
+        help='using the tab-delimited text files set by the `round2ann` parameter, \
+        we can limit which genes are defined as differentially expressed. \
         Note that this will only affect which genes are used for round 2 annotation \
         since round 2 only annotates based on DE genes. It will not \
         affect the columns that show differential expression values. This \
@@ -275,7 +276,7 @@ if __name__ == '__main__':
                 "of equal length to `compareRNAdiffExp`!"
             err_msg = ("%s\n`compareRNAdiffExp` length = %i" % (err_msg, \
                 len(args.compareRNAdiffExp)))
-            err_msg = ("%s\`rnaScores` length = %i\n" % (err_msg, \
+            err_msg = ("%s`rnaScores` length = %i\n" % (err_msg, \
                 len(args.rnaScores)))
             sys.exit(err_msg)
         else:
@@ -452,6 +453,35 @@ if __name__ == '__main__':
                                               "name"].unique())
         counts_list.append("Number of peaks overlap all old peaks\t%i" % \
                            (overlap_all_counts))
+    
+    # compare experiments ChIP peaks with RNA DE experiments
+    ### HERE I AM
+    for rna_samp in range(0, len(args.compareRNAdiffExp)):
+        rna_sample_file = args.compareRNAdiffExp[rna_samp]
+        rna_sample_df = pd.read_csv(rna_sample_file, sep='\t')
+        if "gene_id" not in list(rna_sample_df.columns):
+            rna_cols_str = ",".join(list(rna_sample_df.columns))
+            geneIDerr= (("\nThe `gene_id` column cannot be found in %s." + \
+                "\nPlease check the column names.\n" + \
+                "COLUMNS FOUND: %s\n") % (rna_sample_file, rna_cols_str))
+            sys.exit(geneIDerr)
+        else:
+            if len(rna_sample_df["gene_id"]) != \
+                len(rna_sample_df["gene_id"].unique()):
+                geneIDerr= (("\nSomething is wrong!\n" + \
+                    "The `gene_id` column must be unique in %s.") % \
+                (rna_sample_file))
+                sys.exit(geneIDerr)
+        if len(args.rnaScores) > 0:
+            for rna_sampl_col in rna_score_cols[rna_sample_file]:
+                if rna_sampl_col not in list(rna_sample_df.columns):
+                    rna_cols_str = ",".join(list(rna_sample_df.columns))
+                    rnaScoreerr= (("\nThe %s column cannot be found " + \
+                        "in %s.\nPlease check the column names.\n" + \
+                        "COLUMNS FOUND: %s\n") % \
+                        (rna_sampl_col, rna_sample_file, rna_cols_str))
+                    sys.exit(rnaScoreerr) 
+
     # add motif info to peakwise files
     if args.motifFiles:
         motifSearchPeaks=""
@@ -638,13 +668,14 @@ if __name__ == '__main__':
         "gene_score" : np.float64, "gene_strand":object})
 
     # annotate peaks that have not been annotated yet to DE genes within a bp limit
+    #### HERE I AM
     round2_peaks = pd.DataFrame(columns=list(peaks_df.columns))
     orphan_peaks_df = pd.DataFrame(columns=list(peaks_df.columns))
     all_de_genes = []
-    if args.compareRNAdiffExp:
+    if args.round2ann:
         # RNAseqs_dict = defaultdict(list) # RNAseqs_dict[sampleName]=[genes]
-        for rna_samp in range(0, len(args.compareRNAdiffExp)):
-            rna_sample_file = args.compareRNAdiffExp[rna_samp]
+        for rna_samp in range(0, len(args.round2ann)):
+            rna_sample_file = args.round2ann[rna_samp]
             rna_sample_df = pd.read_csv(rna_sample_file, sep='\t')
             if "gene_id" not in list(rna_sample_df.columns):
                 rna_cols_str = ",".join(list(rna_sample_df.columns))
@@ -659,16 +690,6 @@ if __name__ == '__main__':
                         "The `gene_id` column must be unique in %s.") % \
                     (rna_sample_file))
                     sys.exit(geneIDerr)
-            if len(args.rnaScores) > 0:
-                for rna_sampl_col in rna_score_cols[rna_sample_file]:
-
-                    if rna_sampl_col not in list(rna_sample_df.columns):
-                        rna_cols_str = ",".join(list(rna_sample_df.columns))
-                        rnaScoreerr= (("\nThe %s column cannot be found " + \
-                            "in %s.\nPlease check the column names.\n" + \
-                            "COLUMNS FOUND: %s\n") % \
-                            (rna_sampl_col, rna_sample_file, rna_cols_str))
-                        sys.exit(rnaScoreerr) 
             # rna_sample_name = args.compareRNAdiffExpNames[rna_samp]
             
             de_genes = list(rna_sample_df.loc[:,"gene_id"])
@@ -726,7 +747,6 @@ if __name__ == '__main__':
         #all_peaks_df = pd.concat(all_peaks_frame)
 
 
-
     # reorganize columns
     all_peaks_col_order = bed_cols + ['roundOfAnnotation']
     if args.narrowpeak_file:
@@ -774,64 +794,61 @@ if __name__ == '__main__':
 
 
     # Assign DE genes to peaks
-    if args.compareRNAdiffExp:
-        if args.round2ann:
-            gene_count_r2 = \
-                len(all_peaks_df.loc[all_peaks_df["roundOfAnnotation"] == 2, \
-                    "gene_id"].unique())
-            counts_list.append("genes annotated in round2\t%i" % \
-                               (gene_count_r2))
-            counts_list.append("total genes annotated\t%i" % \
-                               (gene_count_r1 + gene_count_r2))
+    if args.round2ann:
+        gene_count_r2 = \
+            len(all_peaks_df.loc[all_peaks_df["roundOfAnnotation"] == 2, \
+                "gene_id"].unique())
+        counts_list.append("genes annotated in round2\t%i" % \
+                           (gene_count_r2))
+        counts_list.append("total genes annotated\t%i" % \
+                           (gene_count_r1 + gene_count_r2))
 
-        ## Which genes are DE according to the RNA analysis?
-        for rna_samp in range(0, len(args.compareRNAdiffExp)):
-            rna_sample_file = args.compareRNAdiffExp[rna_samp]
-            rna_sample_name = args.compareRNAdiffExpNames[rna_samp]
-            rna_sample_df = pd.read_csv(rna_sample_file, sep='\t')
-            rna_sample_col_names = [rna_sample_name]
-            if len(args.rnaScores) > 0:
+    ## Which genes are DE according to the RNA analysis?
+    for rna_samp in range(0, len(args.compareRNAdiffExp)):
+        rna_sample_file = args.compareRNAdiffExp[rna_samp]
+        rna_sample_name = args.compareRNAdiffExpNames[rna_samp]
+        rna_sample_df = pd.read_csv(rna_sample_file, sep='\t')
+        rna_sample_col_names = [rna_sample_name]
+        if len(args.rnaScores) > 0:
 
-                rna_sample_scores_df= rna_sample_df.loc[:,["gene_id"] + \
-                    rna_score_cols[rna_sample_file]]
-                rna_sample_col_names = [rna_sample_name + ":" + x \
-                    for x in rna_score_cols[rna_sample_file]]
-                rna_sample_scores_df.columns = ["gene_id"] + \
-                    rna_sample_col_names
-                all_peaks_df = all_peaks_df.merge(rna_sample_scores_df, \
-                    on = "gene_id", how = "left")
-            else:
-                de_genes = list(rna_sample_df.loc[:,"gene_id"].unique())
-                all_peaks_df.loc[:, rna_sample_name] = all_peaks_df.apply( \
-                    lambda row: row["gene_id"] in de_genes, axis=1)
-            all_peaks_df.loc[:, rna_sample_col_names].fillna(False, inplace=True)
-            peaks_ann_to_de_counts = len(all_peaks_df.loc[ \
-                all_peaks_df[rna_sample_col_names[0]] != False, "gene_id"].unique())
-            round1_splice = all_peaks_df[all_peaks_df['roundOfAnnotation'] == 1]
-            r1_peaks_ann_to_de_counts = len(round1_splice.loc[ \
-                round1_splice[rna_sample_col_names[0]] != False, "gene_id"].unique())
-            counts_list.append(("total differentially expressed genes " + \
-                "in %s\t%i") % (rna_sample_name, \
-                    len(rna_sample_df.loc[:,"gene_id"].unique())))
-            counts_list.append("# genes annotated to %s in round1\t%i" % \
-                               (rna_sample_name, r1_peaks_ann_to_de_counts))
-            counts_list.append("# genes annotated to %s in both rounds\t%i" % \
-                               (rna_sample_name, peaks_ann_to_de_counts))
-        ## see how many gene are found in all rna samples
-        counts_list.append(("differentially expressed genes given all " + \
-            "RNA samples\t%i") % len(all_de_genes))
-        de_round1 = len([x for x in \
-                         all_peaks_df.loc[( \
-                            (all_peaks_df[compareRNAdiffExpCols].any(axis=1)) & \
-                            (all_peaks_df[u'roundOfAnnotation'] == 1)), \
-                         "gene_id"].unique() if str(x) != 'nan'])
-        counts_list.append(("# DE genes annotated given all RNA " + \
-            "samples in round1\t%i") % de_round1)
-        de_genes_total = len([x for x in \
-            all_peaks_df.loc[all_peaks_df[compareRNAdiffExpCols].all(axis=1), \
-            "gene_id"].unique() if str(x) != 'nan'])
-        counts_list.append(("# DE genes annotated given all RNA samples " + \
-            "in both rounds\t%i") % de_genes_total)
+            rna_sample_scores_df= rna_sample_df.loc[:,["gene_id"] + \
+                rna_score_cols[rna_sample_file]]
+            rna_sample_col_names = [rna_sample_name + ":" + x \
+                for x in rna_score_cols[rna_sample_file]]
+            rna_sample_scores_df.columns = ["gene_id"] + \
+                rna_sample_col_names
+            all_peaks_df = all_peaks_df.merge(rna_sample_scores_df, \
+                on = "gene_id", how = "left")
+        else:
+            de_genes = list(rna_sample_df.loc[:,"gene_id"].unique())
+            all_peaks_df.loc[:, rna_sample_name] = all_peaks_df.apply( \
+                lambda row: row["gene_id"] in de_genes, axis=1)
+        all_peaks_df.loc[:, rna_sample_col_names].fillna(False, inplace=True)
+        peaks_ann_to_de_counts = len(all_peaks_df.loc[ \
+            all_peaks_df[rna_sample_col_names[0]] != False, "gene_id"].unique())
+        round1_splice = all_peaks_df[all_peaks_df['roundOfAnnotation'] == 1]
+        r1_peaks_ann_to_de_counts = len(round1_splice.loc[ \
+            round1_splice[rna_sample_col_names[0]] != False, "gene_id"].unique())
+        counts_list.append(("total differentially expressed genes " + \
+            "in %s\t%i") % (rna_sample_name, \
+                len(rna_sample_df.loc[:,"gene_id"].unique())))
+        counts_list.append("# genes annotated to %s in round1\t%i" % \
+                           (rna_sample_name, r1_peaks_ann_to_de_counts))
+        counts_list.append("# genes annotated to %s in both rounds\t%i" % \
+                           (rna_sample_name, peaks_ann_to_de_counts))
+
+    de_round1 = len([x for x in \
+        all_peaks_df.loc[( \
+        (all_peaks_df[compareRNAdiffExpCols].any(axis=1)) & \
+        (all_peaks_df[u'roundOfAnnotation'] == 1)), \
+        "gene_id"].unique() if str(x) != 'nan'])
+    counts_list.append(("# DE genes annotated given all RNA " + \
+        "samples in round1\t%i") % de_round1)
+    de_genes_total = len([x for x in \
+        all_peaks_df.loc[all_peaks_df[compareRNAdiffExpCols].all(axis=1), \
+        "gene_id"].unique() if str(x) != 'nan'])
+    counts_list.append(("# DE genes annotated given all RNA samples " + \
+        "in both rounds\t%i") % de_genes_total)
 
     # Add info from other ChIP genewise annotations
     ### HERE!
@@ -1071,3 +1088,4 @@ if __name__ == '__main__':
         olog_file.write("%s\n" % (counts_list[i]))
 
     olog_file.close()
+
