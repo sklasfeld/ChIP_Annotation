@@ -71,16 +71,25 @@ def wc(file_name, verbose=False, samtools_path=""):
         sys.stdout.flush()
     return int(break_out[0])
 
+def restricted_float(x):
+    try:
+        x = float(x)
+    except ValueError:
+        raise argparse.ArgumentTypeError("%r not a floating-point literal" % (x,))
+
+    if x < 0.0 or x > 1.0:
+        raise argparse.ArgumentTypeError("%r not in range [0.0, 1.0]"%(x,))
+    return x
 
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description="This is the main script for \
         gene annotation of ChIP peaks. This script first annotates ChIP peaks \
         by overlapping them with other ChIP peaks, DNase, MNase, or motifs. \
-        Then it calls annotate the peaks to genes. The first round annotates \
+        Then it annotate the peaks to genes. The first round annotates \
         peaks by location relative to genes. Priority is given to intragenic \
-        peaks and then peaks upstream of genes (limited by \
-        `filter_tss_upstream`) and then peaks downstream of genes \
+        peaks (limited by `percent_inter`) and then peaks upstream of genes \
+        (limited by `filter_tss_upstream`) and then peaks downstream of genes \
         (limited by `filter_tts_downstream`). The second round is \
         dependent on genes that were found to be significantly differentially \
         expressed (DE). In round 2, peaks are annotated to upstream or \
@@ -105,9 +114,15 @@ if __name__ == '__main__':
         default="")
     parser.add_argument('-sp', '--samtools_path', help='path to samtools', \
         default="")
+    parser.add_argument('-pi', '--percent_inter', help='round1 \
+        annotation only annotates genes that overlap at least this \
+        percent of the gene. For example if this is set to 1 then \
+        the peak must overlap the gene 100% to annotate to it. \
+        If it is set to .5 then the peak must overlap \
+        at least half. (default:0)', default=0, type=restricted_float)
     parser.add_argument('-tss', '--filter_tss_upstream', help='round1 \
         annotation is limited to upstream genes of this many bp \
-        (default: 1000)', default=1000, type=int)
+        (default: 3000)', default=3000, type=int)
     parser.add_argument('-tts', '--filter_tts_downstream', help='round1 \
         annotation is limited to downstream genes of this many bp \
         (default: 100)', default=100, type=int)
@@ -585,6 +600,7 @@ if __name__ == '__main__':
     round1_peaks = round1_annotation.r1_annotate(gene_alist, args.gene_bedfile, \
         args.bed_file, peaks_df, args.prefix, dir_name, \
         gene_alist_cols=args.gene_alist_cols, \
+        per_inter_filter=args.percent_inter, \
         bp_upstream_filter=args.filter_tss_upstream, \
         bp_downstream_filter=args.filter_tts_downstream, \
         ignore_conv_peaks=args.ignore_conv_peaks, \
