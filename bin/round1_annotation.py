@@ -64,6 +64,7 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 	 optional parameters:
 	 * gene_alist_cols - columns in `gene_alist` used to annotate the genes 
 	 (eg. gene_name)
+	 * per_inter_filter - annotates genes that overlap >= this percent of the gene
 	 * bp_upstream_filter - maximum bp distance upstream of tss that peak can 
 	 be annotated to a gene in round 1 (default:1000)
 	 * bp_downstream_filter - maximum bp distance downstream of tts that peak can
@@ -75,6 +76,7 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 	"""
 	# default keyword parameters
 	gene_alist_cols = []
+	per_inter_filter = 0
 	bp_upstream_filter = 3000
 	bp_downstream_filter = 0
 	ignore_conv_peaks = False
@@ -83,6 +85,8 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 	# user-set keyword parameters
 	if ('gene_alist_cols' in keyword_parameters):
 		gene_alist_cols = keyword_parameters['gene_alist_cols']
+	if ('per_inter_filter' in keyword_parameters):
+		per_inter_filter = keyword_parameters['per_inter_filter']
 	if ('bp_upstream_filter' in keyword_parameters):
 		bp_upstream_filter = keyword_parameters['bp_upstream_filter']
 	if ('bp_downstream_filer' in keyword_parameters):
@@ -100,72 +104,96 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 	if 'qValue' in peaks_df.columns:
 		narrowPeak_boolean = True
 	# create a dataframe with gene alias information
-	geneAnn_df = pd.read_csv(gene_alist, sep='\t', dtype=str)
+	geneAnn_df = pd.read_csv(gene_alist, sep='\t', dtype=str, index_col=False)
 	if len(gene_alist_cols)>0:
 		for gene_ann_col in gene_alist_cols:
 			if not gene_ann_col in list(geneAnn_df.columns):
 				sys.exit("%s is missing a column labeled %s" % (gene_alist, gene_ann_col))
+	geneAnn_df = geneAnn_df.loc[:,['gene_id'] + gene_alist_cols]
+	
+	
+	# STEP 0: first get closest distance of all genes
+	# this is simply to check that the peaks
+	# are close to any genes
+	if bp_upstream_filter > 0 or bp_downstream_filter > 0:
+		closestgenes_file = ("%s/%s_closest.txt" % (dir_name, prefix))
+		closestgenes_cmd = ("%sbedtools closest -D b -a %s -b %s > %s" % \
+			(bedtools_path, bed_fname, geneBed_file, closestgenes_file))
+		cmd(closestgenes_cmd, verbose)
+		if wc(closestgenes_file, verbose) == 0:
+			sys.exit("\nAwkward!!! There are no peaks close to genes...\n"+ \
+				"Failure to pass Round 1 Annotation has closed script...")
+	
+
 	# STEP 1: Collect Peaks that are INTRAGENIC
 	if verbose:
 		sys.stdout.write("Annotating INTRA genic peaks...\n")
-	# first get closest distance of all genes
-	closestgenes_file = ("%s/%s_closest.txt" % (dir_name, prefix))
-	closestgenes_cmd = ("%sbedtools closest -D b -a %s -b %s > %s" % \
-		(bedtools_path, bed_fname, geneBed_file, closestgenes_file))
-	cmd(closestgenes_cmd, verbose)
-	if wc(closestgenes_file, verbose) == 0:
-		sys.exit("\nAwkward!!! There are no peaks close to genes...\n"+ \
+#	if per_inter_filter == 0:
+#		# ignore different types of the same CDS and limit to min_distance=0kb (intragenic)
+#		intragenic_peaks_df = closest_df.loc[closest_df["distance_from_gene"]==0.0,:].drop_duplicates()
+#		# add annotations found in peaks_df to intragenic peaks
+#		intragenic_peaks_df = intragenic_peaks_df.merge(peaks_df, how = 'left', on=list(peaks_df.columns[:6]))
+#		intragenic_peak_list =  list(intragenic_peaks_df['name'].unique())
+#	else:
+	bedtools_intragenic_file = ("%s/%s_intragenic.txt" % (dir_name, prefix))
+	intra_limit_param = ""
+	if per_inter_filter > 0:
+		intra_limit_param = (" -F %f" % per_inter_filter)
+	bedtools_intragenic_cmd = ("%sbedtools intersect -wo%s -a %s -b %s > %s" % \
+		(bedtools_path, intra_limit_param, bed_fname, geneBed_file, bedtools_intragenic_file))
+	cmd(bedtools_intragenic_cmd, verbose)
+	genesOverlap_cols = list(peaks_df.columns[:6]) + \
+			["gene_chr", "gene_chromStart", "gene_chromEnd", "gene_id", \
+			"gene_score", "gene_strand"] + ["gene_overlap"]
+	if wc(bedtools_intragenic_file, verbose) == 0:
+		if(bp_upstream_filter == 0 and bp_downstream_filter == 0):
+			sys.exit("\nAwkward!!! There are no peaks in genes...\n"+ \
 			"Failure to pass Round 1 Annotation has closed script...")
-	# get bedtools closest output into df
-	dis2genes_cols = list(peaks_df.columns[:6]) + \
-		["gene_chr", "gene_chromStart", "gene_chromEnd", "gene_id", \
-		"gene_score", "gene_strand"] + ["distance_from_gene"]
-	closest_df = pd.read_csv(closestgenes_file, sep="\t", header=None, \
-		names=dis2genes_cols, index_col=False, dtype={"chr" : object, \
-			"start" : np.int64, "stop" : np.int64, "name" : object, \
-			"signal" : np.float64, "strand":object, "gene_chr" : object, \
-			"gene_chromStart" : np.int64, "gene_chromEnd" : np.int64, \
-			"gene_id" : object, "gene_score" : np.float64, \
-			"gene_strand":object, "distance_from_gene": np.float64})
-	# ignore different types of the same CDS and limit to min_distance=0kb (intragenic)
-	intragenic_peaks_df = closest_df.loc[closest_df["distance_from_gene"]==0.0,:].drop_duplicates()
-	# add annotations found in peaks_df to intragenic peaks
-	intragenic_peaks_df = intragenic_peaks_df.merge(peaks_df, how = 'left', on=list(peaks_df.columns[:6]))
-	intragenic_peak_list =  list(intragenic_peaks_df['name'].unique())
-	# STEP 2: Collect Peaks that are UPSTREAM of genes
-	if verbose:
-		sys.stdout.write("Annotating peaks UPSTREAM of genes ...\n")
-	# get dataframe of all INTERGENIC peaks (not found inside genes)
-	intergenic_peaks_df = peaks_df[~peaks_df["name"].isin(intragenic_peaks_df["name"])]
-	# first ignore peaks downstream (-id) of genes since upstream is preferred
-	upsteamgenes_file = ("%s/%s_closest_id.txt" % (dir_name, prefix))
-	upstream_peaks_df = pd.DataFrame()
-	#if not os.path.isfile(upsteamgenes_file):
-	if ignore_conv_peaks:
-		upstream_peaks_df = bin.upstream_peaks.annotate(prefix, \
-			intergenic_peaks_df, geneBed_file, bp_upstream_filter, \
-			dir_name, ignore_conv_peaks=ignore_conv_peaks)
+		else:
+			sys.stderr.write("Warning: There are NONE intragenic peaks (within a gene).\n")
+			intragenic_peaks_df=pd.DataFrame(columns=genesOverlap_cols+["distance_from_gene"])
 	else:
-		upstream_peaks_df = bin.upstream_peaks.annotate(prefix, \
-			intergenic_peaks_df, geneBed_file, bp_upstream_filter, \
-			dir_name)
-	#else:
-	#	sys.stderr.write("The file %s already exists so I am not going to overwrite it\n" \
-	#		% upsteamgenes_file)
-	#	# get upstream distance output into df
-	#	upstream_peaks_df = pd.read_csv(upsteamgenes_file, sep="\t", header=None, \
-	#		names=["chr", "start", "stop", "name", "signal", "strand", \
-	#		"tss_chr", "tss_start", "tss_stop", "gene_id", "tss_score", \
-	#		"tss_strand", "distance_from_gene"], \
-	#		index_col=False, dtype={"chr" : object, \
-	#		"start" : np.int64, "stop" : np.int64, "name" : object, \
-	#		"signal" : np.float64, "strand":object, "tss_chr" : object, \
-	#		"tss_start" : np.int64, "tss_stop" : np.int64, \
-	#		"gene_id" : object, "tss_score" : np.float64, \
-	#		"tss_strand":object, "distance_from_gene": np.float64})
+		
+		# get bedtools intersect output into df
+		intragenic_peaks_df = pd.read_csv(bedtools_intragenic_file, sep="\t", header=None, \
+			names=genesOverlap_cols, index_col=False, dtype={"chr" : object, \
+				"start" : np.int64, "stop" : np.int64, "name" : object, \
+				"signal" : np.float64, "strand":object, "gene_chr" : object, \
+				"gene_chromStart" : np.int64, "gene_chromEnd" : np.int64, \
+				"gene_id" : object, "gene_score" : np.float64, \
+				"gene_strand":object, "gene_overlap": np.float64})
+		intragenic_peaks_df.loc[:,"gene_overlap"] = (
+			intragenic_peaks_df.loc[:,"gene_overlap"] /
+			np.float64(intragenic_peaks_df.loc[:,"gene_chromEnd"] - 
+				intragenic_peaks_df.loc[:,"gene_chromStart"]))
+		intragenic_peaks_df.loc[:,"distance_from_gene"]=0
+		intragenic_peaks_df = intragenic_peaks_df.merge(peaks_df, how = 'left', 
+			on=list(peaks_df.columns[:6]))
+		intragenic_peak_list =  list(intragenic_peaks_df['name'].unique())
 	
-	upstream_peaks_df = upstream_peaks_df.merge(peaks_df, how = 'left', on=list(peaks_df.columns[:6]))
-	# STEP 3: Collect Peaks that are DOWNSTREAM of genes
+
+	# STEP 2: Collect Peaks that are UPSTREAM of genes
+	if bp_upstream_filter > 0:
+		if verbose:
+			sys.stdout.write("Annotating peaks UPSTREAM of genes ...\n")
+		# get dataframe of all INTERGENIC peaks (not found inside genes)
+		intergenic_peaks_df = peaks_df[~peaks_df["name"].isin(intragenic_peaks_df["name"])]
+		# first ignore peaks downstream (-id) of genes since upstream is preferred
+		upsteamgenes_file = ("%s/%s_closest_id.txt" % (dir_name, prefix))
+		upstream_peaks_df = pd.DataFrame()
+		#if not os.path.isfile(upsteamgenes_file):
+		if ignore_conv_peaks:
+			upstream_peaks_df = bin.upstream_peaks.annotate(prefix, \
+				intergenic_peaks_df, geneBed_file, bp_upstream_filter, \
+				dir_name, ignore_conv_peaks=ignore_conv_peaks)
+		else:
+			upstream_peaks_df = bin.upstream_peaks.annotate(prefix, \
+				intergenic_peaks_df, geneBed_file, bp_upstream_filter, \
+				dir_name)
+		
+		upstream_peaks_df = upstream_peaks_df.merge(peaks_df, how = 'left', on=list(peaks_df.columns[:6]))
+		upstream_peaks_df.loc[:,"gene_overlap"]=None
+		# STEP 3: Collect Peaks that are DOWNSTREAM of genes
 	if verbose:
 		sys.stdout.write("Annotating peaks DOWNSTREAM of genes ...\n")
 	downstream_peaks_df = pd.DataFrame()
@@ -186,6 +214,7 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 				bp_downstream_filter, dir_name)
 	if len(downstream_peaks_df) > 0:
 		downstream_peaks_df = downstream_peaks_df.merge(peaks_df, how = 'left', on=list(peaks_df.columns[:6]))
+		downstream_peaks_df.loc[:,"gene_overlap"]=None
 	# connect upstream and downstream peaks to gene locations rather than
 	# tss or tts respectively
 	if verbose:
@@ -193,13 +222,14 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 	peak2gene_cols = list(intragenic_peaks_df.columns)
 	gene_table = pd.read_csv(geneBed_file, sep='\t', header=None)
 	gene_table.columns=peak2gene_cols[6:12]
-	# remove tss info from upstream dataframe
-	upstream_peaks_df = upstream_peaks_df.drop(['tss_chr', 'tss_start', \
-		'tss_stop', 'tss_score','tss_strand'],axis=1)
+	if bp_upstream_filter > 0:
+		# remove tss info from upstream dataframe
+		upstream_peaks_df = upstream_peaks_df.drop(['tss_chr', 'tss_start', \
+			'tss_stop', 'tss_score','tss_strand'],axis=1)
 
 	# add gene info to upstream dataframe
 	round1_frame = []
-	if len(upstream_peaks_df) > 0:
+	if bp_upstream_filter > 0 and len(upstream_peaks_df) > 0:
 		upstream_peaks_2_genes = upstream_peaks_df.merge(gene_table, \
 			how = 'left', on='gene_id')
 		if len(downstream_peaks_df) > 0:
@@ -292,6 +322,7 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 	gene_nPeaks_df = gene_nPeaks_series.to_frame().reset_index()
 	gene_nPeaks_df.columns=peak2gene_cols[6:12]+['numPeaks']
 	gene_dis_series = gene_groups_df.apply(lambda x: ";".join(str(s) for s in list(x["distance_from_gene"])))
+	gene_overlap_series = gene_groups_df.apply(lambda x: ";".join(str(s) for s in list(x["gene_overlap"])))
 	gene_dis_df = gene_dis_series.to_frame().reset_index()
 	gene_dis_df.columns=peak2gene_cols[6:12]+['distance']
 	gene_df = gene_nPeaks_df.merge(gene_dis_df,how='outer',on=peak2gene_cols[6:12])

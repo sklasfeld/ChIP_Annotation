@@ -46,12 +46,17 @@ def compare_bedfiles(peakfile1, peakfile2, outfile, *positional_parameters, \
 	if ('distance' in keyword_parameters):
 		distance = keyword_parameters['distance']
 	if ('verbal' in keyword_parameters):
-		verbal = keyword_parameters['verbal']
+		verbal = keyword_parameters['verbal']# 30min ABA v no Treatment
+Rscript ~/custom_scripts/deseq2_diffbind_pairwise.R \
 	if ('keep_tmps' in keyword_parameters):
 		keep_tmps = keyword_parameters['keep_tmps']
 	if ('bedtools_path' in keyword_parameters):
 		bedtools_path = keyword_parameters['bedtools_path']
 
+	if not os.path.isfile(peakfile1) or if os.stat(peakfile1).st_size == 0:
+		sys.exit((("\nERROR: Cannot find file: %s\n") % peakfile1))
+    if not os.path.isfile(peakfile2) or if os.stat(peakfile2).st_size == 0:
+    	sys.exit((("\nERROR: Cannot find file: %s\n") % peakfile1))
 
 	
 	
