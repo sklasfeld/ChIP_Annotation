@@ -159,20 +159,21 @@ if __name__ == '__main__':
         required=False)
     parser.add_argument('-tn', '--comparePeaksToTextNames', nargs='*', \
         help='list of prefixes for the text files that you want to compare with. \
-        This must be equal to "comparePeaksToText" variable \
+        The number of values set to this parameter must be equal to \
+        the number of values set to parameter `comparePeaksToText`. \
         (eg.dexVmock_db)', required=False, default=[])
-    parser.add_argument('-tc', '--otherChipFeatures', help='In each \
-        gene-centric file given in `otherChipGeneAnn` there are other \
+    parser.add_argument('-tc', '--addTextFeatures', help='In each \
+        peak-centric file given in `comparePeaksToText` there are other \
         columns that you may want to include in this analysis. If so you \
         need to set this in a specific format: \
-        `otherChipPrefix`:`col1,col2..coln`. This data will be output in \
-        columns labeled by the `otherChipPrefix` and previous file name. For \
-        example, if set such that \
-        `--otherChipFeatures K27_ABA_4hr:4hr_ABA_v_none_logFC,4hr_ABA_v_none_adjP \
-        K27_mock_4hr:4hr_mock_v_none_logFC,4hr_mock_v_none_adjp` then the \
-        output will include columns: K27_ABA_4hr:4hr_ABA_v_none_logFC, \
-        K27_ABA_4hr:4hr_ABA_v_none_adjP, K27_mock_4hr:4hr_mock_v_none_logFC, \
-        and K27_mock_4hr:4hr_mock_v_none_adjP', required=False, default=[], \
+        `[comparePeaksToTextName]:[column_of_interest_x],[column_of_interest_y],[...]`. \
+        This data will be output in columns formatted: \
+        `[comparePeaksToTextName]:[column_of_interest]`. For example, if we set \
+        `--comparePeaksToTextNames timepoint1_dexVmock_db timepoint2_dexVmock_db \
+        --addTextFeatures timepoint1_dexVmock_db:logFC \
+        timepoint2_dexVmock_db:logFC,adjP` then the following columns will be \
+        written: `timepoint1_dexVmock_db:logFC`, `timepoint2_dexVmock_db:logFC`, \
+        and `timepoint2_dexVmock_db:adjP`', required=False, default=[], \
         nargs='*')
     parser.add_argument('-oc', '--otherChipGeneAnn', help='tab-delimited \
         text file(s) that contain gene-wise annotation information of other \
@@ -296,6 +297,15 @@ if __name__ == '__main__':
             err_msg = ("%s\ncomparePeaksToBedsNames length = %i\n" % (err_msg, \
                 len(args.comparePeaksToBedsNames)))
             sys.exit(err_msg)
+    if args.comparePeaksToText or args.comparePeaksToTextNames:
+        if len(args.comparePeaksToText) != len(args.comparePeaksToTextNames):
+            err_msg = "comparePeaksToText and comparePeaksToTextNames must " + \
+                "be of equal length!"
+            err_msg = ("%s\ncomparePeaksToText length = %i" % (err_msg, \
+                len(args.comparePeaksToText)))
+            err_msg = ("%s\ncomparePeaksToTextNames length = %i\n" % (err_msg, \
+                len(args.comparePeaksToTextNames)))
+            sys.exit(err_msg)
     if args.compareRNAdiffExp or args.compareRNAdiffExpNames:
         if len(args.compareRNAdiffExp) != len(args.compareRNAdiffExpNames):
             err_msg = "`compareRNAdiffExp` and `compareRNAdiffExpNames` " + \
@@ -338,6 +348,13 @@ if __name__ == '__main__':
     else:
         if args.compareRNAdiffExp:
             compareRNAdiffExpCols = args.compareRNAdiffExpNames
+
+    addTextFeatures_dic = defaultdict(list) 
+    if len(args.addTextFeatures) > 0:
+        for chip_feat in args.addTextFeatures:
+            prefixNCols =chip_feat.split(":")
+            colList = prefixNCols[1].split(",")
+            addTextFeatures_dic[prefixNCols[0]]=colList
 
     # set paths 
     if len(args.bedtools_path) > 0:
@@ -443,7 +460,7 @@ if __name__ == '__main__':
             "summit" : np.int64})
 
 
-    # compare experiments ChIP peaks with other ChIP experiments
+    # compare experiments ChIP peaks with other bed files
     if args.comparePeaksToBeds:
         for oldpeakidx in range(0, len(args.comparePeaksToBeds)):
             old_peak_file = args.comparePeaksToBeds[oldpeakidx]  # bed file to compare with
@@ -487,6 +504,82 @@ if __name__ == '__main__':
                     np.where(peaks_df["name"].isin(newPeaksInOldPeaks),True, False)
                 peaks_df.loc[:,old_peak_prefix] = \
                     peaks_df[old_peak_prefix].fillna(False)
+            if not args.keep_tmps:
+                os.remove(compare_peak_file)
+        overlap_all_counts = len(peaks_df.loc[peaks_df.apply( \
+            lambda row: all(row[args.comparePeaksToBedsNames]), axis=1), \
+                                              "name"].unique())
+        counts_list.append("Number of peaks overlap all old peaks\t%i" % \
+                           (overlap_all_counts))
+    # compare experiments ChIP peaks with other peakwise text-files
+    if args.comparePeaksToText:
+        for textf_index in range(0, len(args.comparePeaksToText)):
+            textf = args.comparePeaksToText[textf_index]  # text file to compare with
+            textf_prefix = args.comparePeaksToTextNames[textf_index]  # prefix for text file to compare with
+            # convert text file to a pandas dataframe
+            textf_df = pd.read_csv(textf,sep='\t', header=0, dtype=str)
+            if "chrom" not in list(textf_df.columns) or \
+                "start" not in list(textf_df.columns) or \
+                "stop" not in list(textf_df.columns):
+                sys.exit(("ERROR: files listed in `comparePeaksToText` parameters " +
+                    "must be tab-delimited tables that contain the following columns: " +
+                    "`chrom`, `start`, and `stop`. This is not found in the following " +
+                    "file: %s\n") % textf)
+            bedColsInTextDf=["chrom","start","stop"]
+            for i in range(3,length(bed_cols)):
+                if bed_cols[i] in list(textf_df.columns):
+                    bedColsInTextDf.append(bed_cols[i])
+
+            comp_bed_df = textf_df.loc[:,bedColsInTextDf].copy()
+            temp_bed = (("%s/%s.bed.tmp") % (dir_name,textf_prefix))
+            comp_bed_df.to_csv(temp_bed, sep="\t", header=False, \
+                    index=False)
+
+            compare_peak_file = ("%s/%s_peaks_found_in_%s.txt" % \
+                                 (dir_name, args.prefix, textf_prefix))
+            overlap_df_x = genome_locations.compare_bedfiles(args.bed_file, \
+                textf, temp_bed, verbal=args.verbose, \
+                bedtools_path=args.bedtools_path)
+            if not args.keep_tmps:
+                os.remove(temp_bed)
+            # count number of peaks that overlap this other ChIP experiment
+            overlap_count_x = len(overlap_df_x["name"].unique())
+            counts_list.append("Number of peaks overlap %s\t%i" % \
+                               (textf_prefix, overlap_count_x))
+            newPeaksInOldPeaks = list(overlap_df_x["name"])
+            if args.addTextFeatures:
+                colsList_for_file2 = ["chr_b", "start_b", "stop_b", "name_b", "signal_b", \
+                "strand_b", "fold_change_b", "pValue_b", "qValue_b", "summit_b"]
+                colsList_for_file2 = colsList_for_file2[0:len(bedColsInTextDf)]
+                overlap_df_x = overlap_df_x.merge(textf_df, how=left, 
+                    left_on=colsList_for_file2,
+                    right_on=bedColsInTextDf)
+                for textColOfInterest in addTextFeatures_dic:
+                    if not textColOfInterest in list(overlap_df_x.columns):
+                        score_col_unavailable = (("\nERROR: %s column is not available in %s." + \
+                            " You may want to remove/edit your --addTextFeatures parameter" +
+                            " or use a different file.\n") % (textColOfInterest, textf))
+                        sys.exit(score_col_unavailable)
+
+                
+                        peakBScoresInPeakA_df =overlap_df_x.groupby(bed_cols)
+                        peakBScores_series = peakBScoresInPeakA_df.apply( \
+                            lambda x: ";".join(str(s) for s in list(x[textColOfInterest])))
+                        peakBScores_df = peakBScores_series.to_frame().reset_index()
+                        newcolname=(("%s:%s") % (textf_prefix, textColOfInterest))
+                        peakBScores_df = \
+                            peakBScores_df.rename(columns={0: (newcolname)})
+                        peaks_df = peaks_df.merge(peakBScores_df, how="left", on=bed_cols)
+                        peaks_df.loc[:,textf_prefix] = \
+                        peaks_df[textf_prefix].fillna("False")
+                
+            else:
+                #peaks_df.loc[:,textf_prefix] = overlap_df_x.apply( \
+                #    lambda row: row["name"].isin(newPeaksInOldPeaks), axis=1)
+                peaks_df.loc[:,textf_prefix] = \
+                    np.where(peaks_df["name"].isin(newPeaksInOldPeaks),True, False)
+                peaks_df.loc[:,textf_prefix] = \
+                    peaks_df[textf_prefix].fillna(False)
             if not args.keep_tmps:
                 os.remove(compare_peak_file)
         overlap_all_counts = len(peaks_df.loc[peaks_df.apply( \
