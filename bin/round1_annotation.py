@@ -43,7 +43,7 @@ def wc(file_name, verbose=False, samtools_path=""):
     return int(break_out[0])
 
 
-def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
+def r1_annotate(by, gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 				dir_name, *positional_parameters, **keyword_parameters):
 	"""This function annotates genes based on the following preference order:
 	 1) Inside Genes
@@ -53,11 +53,13 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 	 in round 1 to use for round 2 annotation (which involve RNA-sequencing 
 	 results.)
 	 mandatory parameters:
+	 * by - annotate by "peak" or "summit"
 	 * gene_alist - A file that contains gene IDs and their aliases.
 	  The file must be tab-delimited and have atleast 1 column with the 
 	  labels "gene_id"
 	 the labe
 	 * geneBed_file - bed file with gene locations
+	 * name of bed file if annotating by peaks and narrowPeak if annoting by summits
 	 * peak_file - dataframe with all peak info
 	 * prefix - prefix for experiment
 	 * dir_name - output directory
@@ -82,6 +84,9 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 	ignore_conv_peaks = False
 	bedtools_path=""
 	verbose= False
+	narrowPeak_boolean = False
+	region_cols = list(peaks_df.columns[:6])
+
 	# user-set keyword parameters
 	if ('gene_alist_cols' in keyword_parameters):
 		gene_alist_cols = keyword_parameters['gene_alist_cols']
@@ -98,11 +103,29 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 			bedtools_path = keyword_parameters['bedtools_path']
 	if ('verbose' in keyword_parameters):
 		verbose = keyword_parameters['verbose']
-	narrowPeak_boolean = False
-
-	
 	if 'qValue' in peaks_df.columns:
 		narrowPeak_boolean = True
+	if by == "summit":
+		original_np_file = bed_fname
+		narrowPeak_df = peaks_df.iloc[:,range(0,10)].copy()
+		narrowPeak_df['summit_start'] = narrowPeak_df['start'] + \
+			narrowPeak_df['summit']
+		narrowPeak_df['summit_stop'] = narrowPeak_df['summit_start'] + 1
+		summit_bed = narrowPeak_df.copy()
+		summit_bed['start'] = summit_bed['summit_start']
+		summit_bed['stop'] = summit_bed['summit_stop']
+		summit_bed = summit_bed.loc[:,region_cols]
+		temp_summit_bed_file = (("%s/%s_summits.tmp.bed") % (dir_name,prefix))
+		summit_bed.to_csv(temp_summit_bed_file, sep="\t", header=False, \
+			index=False)
+		bed_fname = temp_summit_bed_file
+		# get dataframe for table in file  `bed_fname`
+		region_df = summit_bed
+	else:
+		# get dataframe for table in file  `bed_fname`
+		region_df = peaks_df
+
+
 	# create a dataframe with gene alias information
 	geneAnn_df = pd.read_csv(gene_alist, sep='\t', dtype=str, index_col=False)
 	if len(gene_alist_cols)>0:
@@ -116,14 +139,13 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 	# this is simply to check that the peaks
 	# are close to any genes
 	if bp_upstream_filter > 0 or bp_downstream_filter > 0:
-		closestgenes_file = ("%s/%s_closest.txt" % (dir_name, prefix))
+		closestgenes_file = ("%s/%s_closest_by%s.txt" % (dir_name, prefix, by))
 		closestgenes_cmd = ("%sbedtools closest -D b -a %s -b %s > %s" % \
 			(bedtools_path, bed_fname, geneBed_file, closestgenes_file))
 		cmd(closestgenes_cmd, verbose)
 		if wc(closestgenes_file, verbose) == 0:
 			sys.exit("\nAwkward!!! There are no peaks close to genes...\n"+ \
 				"Failure to pass Round 1 Annotation has closed script...")
-	
 
 	# STEP 1: Collect Peaks that are INTRAGENIC
 	if verbose:
@@ -135,16 +157,16 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 #		intragenic_peaks_df = intragenic_peaks_df.merge(peaks_df, how = 'left', on=list(peaks_df.columns[:6]))
 #		intragenic_peak_list =  list(intragenic_peaks_df['name'].unique())
 #	else:
-	bedtools_intragenic_file = ("%s/%s_intragenic.txt" % (dir_name, prefix))
+	bedtools_intragenic_file = ("%s/%s_intragenic_by%s.txt" % (dir_name, prefix, by))
 	intra_limit_param = ""
 	if per_inter_filter > 0:
 		intra_limit_param = (" -F %f" % per_inter_filter)
 	bedtools_intragenic_cmd = ("%sbedtools intersect -wo%s -a %s -b %s > %s" % \
 		(bedtools_path, intra_limit_param, bed_fname, geneBed_file, bedtools_intragenic_file))
 	cmd(bedtools_intragenic_cmd, verbose)
-	genesOverlap_cols = list(peaks_df.columns[:6]) + \
-			["gene_chr", "gene_chromStart", "gene_chromEnd", "gene_id", \
-			"gene_score", "gene_strand"] + ["gene_overlap"]
+	genesOverlap_cols =region_cols + \
+		["gene_chr", "gene_chromStart", "gene_chromEnd", "gene_id", \
+		"gene_score", "gene_strand"] + ["gene_overlap"]
 	if wc(bedtools_intragenic_file, verbose) == 0:
 		if(bp_upstream_filter == 0 and bp_downstream_filter == 0):
 			sys.exit("\nAwkward!!! There are no peaks in genes...\n"+ \
@@ -162,14 +184,26 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 				"gene_chromStart" : np.int64, "gene_chromEnd" : np.int64, \
 				"gene_id" : object, "gene_score" : np.float64, \
 				"gene_strand":object, "gene_overlap": np.float64})
+
 		intragenic_peaks_df.loc[:,"gene_overlap"] = (
 			intragenic_peaks_df.loc[:,"gene_overlap"] /
 			np.float64(intragenic_peaks_df.loc[:,"gene_chromEnd"] - 
 				intragenic_peaks_df.loc[:,"gene_chromStart"]))
 		intragenic_peaks_df.loc[:,"distance_from_gene"]=0
+		if by=="summit":
+			orig_col_order = list(intragenic_peaks_df.columns)
+			intragenic_peaks_df = intragenic_peaks_df.merge(narrowPeak_df, 
+				how = 'left', left_on=region_cols,
+				right_on=['chr', 'summit_start', 'summit_stop', 'name', 'signal', 'strand'])
+			intragenic_peaks_df = intragenic_peaks_df.drop(
+				['start_x','stop_x','fold_change', 'pValue', \
+				'qValue', 'summit', 'summit_stop'], axis=1)
+			intragenic_peaks_df = intragenic_peaks_df.rename(
+				columns = {"start_y":"start", "stop_y":"stop"})
+			intragenic_peaks_df = intragenic_peaks_df.loc[:,orig_col_order+['summit_start']]
 		intragenic_peaks_df = intragenic_peaks_df.merge(peaks_df, how = 'left', 
-			on=list(peaks_df.columns[:6]))
-		intragenic_peak_list =  list(intragenic_peaks_df['name'].unique())
+			on=region_cols)
+		#intragenic_peak_list =  list(intragenic_peaks_df['name'].unique())
 	
 
 	# STEP 2: Collect Peaks that are UPSTREAM of genes
@@ -177,9 +211,26 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 		if verbose:
 			sys.stdout.write("Annotating peaks UPSTREAM of genes ...\n")
 		# get dataframe of all INTERGENIC peaks (not found inside genes)
-		intergenic_peaks_df = peaks_df[~peaks_df["name"].isin(intragenic_peaks_df["name"])]
+		if by=="peak":
+			intergenic_peaks_df = region_df.merge(
+				intragenic_peaks_df, how='outer', indicator=True,
+				on=list(region_df.columns))
+			intergenic_peaks_df = intergenic_peaks_df.loc[ \
+				intergenic_peaks_df["_merge"]=="left_only", :]
+			intergenic_peaks_df = intergenic_peaks_df.loc[:, list(region_df.columns)]
+			#intergenic_peaks_df = intergenic_peaks_df.drop(["_merge"], axis=1)
+		else:
+			intergenic_peaks_df = region_df.merge(intragenic_peaks_df,
+				left_on=['chr', 'start', 'name', 'signal', 'strand'],
+				right_on=['chr', 'summit_start', 'name', 'signal', 'strand'],
+				how='outer', indicator=True)
+			intergenic_peaks_df = intergenic_peaks_df.loc[ \
+				intergenic_peaks_df["_merge"]=="left_only", :]
+			intergenic_peaks_df = intergenic_peaks_df.rename(
+				columns = {"start_x":"start", "stop_x":"stop"})
+			intergenic_peaks_df = intergenic_peaks_df.loc[:, list(region_df.columns)]
 		# first ignore peaks downstream (-id) of genes since upstream is preferred
-		upsteamgenes_file = ("%s/%s_closest_id.txt" % (dir_name, prefix))
+		upsteamgenes_file = ("%s/%s_closest_by%s_id.txt" % (dir_name, prefix,by))
 		upstream_peaks_df = pd.DataFrame()
 		#if not os.path.isfile(upsteamgenes_file):
 		if ignore_conv_peaks:
@@ -190,9 +241,20 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 			upstream_peaks_df = bin.upstream_peaks.annotate(prefix, \
 				intergenic_peaks_df, geneBed_file, bp_upstream_filter, \
 				dir_name)
-		
+		if by=="summit":
+			orig_col_order = list(upstream_peaks_df.columns)
+			upstream_peaks_df = upstream_peaks_df.merge(narrowPeak_df, 
+				how = 'left', left_on=region_cols,
+				right_on=['chr', 'summit_start', 'summit_stop', 'name', 'signal', 'strand'])
+			upstream_peaks_df = upstream_peaks_df.drop(
+				['start_x','stop_x','fold_change', 'pValue', \
+				'qValue', 'summit', 'summit_stop'], axis=1)
+			upstream_peaks_df = upstream_peaks_df.rename(
+				columns = {"start_y":"start", "stop_y":"stop"})
+			upstream_peaks_df = upstream_peaks_df.loc[:,orig_col_order+['summit_start']]
 		upstream_peaks_df = upstream_peaks_df.merge(peaks_df, how = 'left', on=list(peaks_df.columns[:6]))
 		upstream_peaks_df.loc[:,"gene_overlap"]=None
+
 		# STEP 3: Collect Peaks that are DOWNSTREAM of genes
 	if verbose:
 		sys.stdout.write("Annotating peaks DOWNSTREAM of genes ...\n")
@@ -200,9 +262,26 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 	if bp_downstream_filter != 0:
 		# get dataframe of all peaks that have not already been annotated
 		# as intragenic nor upstream of a gene
-		intraButNotUpstream_df = intergenic_peaks_df[~intergenic_peaks_df["name"].isin(upstream_peaks_df["name"])]	
+		if by=="peak":
+			intraButNotUpstream_df = intergenic_peaks_df.merge(
+				upstream_peaks_df, how='outer', indicator=True,
+				on=list(intergenic_peaks_df.columns))
+			intraButNotUpstream_df = intraButNotUpstream_df.loc[ \
+				intraButNotUpstream_df["_merge"]=="left_only", :]
+			intraButNotUpstream_df = intraButNotUpstream_df.loc[:, list(intergenic_peaks_df.columns)]
+			#intergenic_peaks_df = intergenic_peaks_df.drop(["_merge"], axis=1)
+		else:
+			intraButNotUpstream_df = intergenic_peaks_df.merge(intraButNotUpstream_df,
+				left_on=['chr', 'start', 'name', 'signal', 'strand'],
+				right_on=['chr', 'summit_start', 'name', 'signal', 'strand'],
+				how='outer', indicator=True)
+			intraButNotUpstream_df = intraButNotUpstream_df.loc[ \
+				intraButNotUpstream_df["_merge"]=="left_only", :]
+			intraButNotUpstream_df = intraButNotUpstream_df.rename(
+				columns = {"start_x":"start", "stop_x":"stop"})
+			intraButNotUpstream_df = intraButNotUpstream_df.loc[:, list(intergenic_peaks_df.columns)]	
 		# file for downstream peaks
-		downstreamgenes_file = ("%s/%s_closest_iu.txt" % (dir_name, prefix))
+		downstreamgenes_file = ("%s/%s_closest_by%s_iu.txt" % (dir_name, prefix,by))
 		if ignore_conv_peaks:
 			downstream_peaks_df = downstream_peaks.annotate(prefix, \
 				intraButNotUpstream_df, geneBed_file, \
@@ -212,6 +291,17 @@ def r1_annotate(gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 			downstream_peaks_df = downstream_peaks.annotate(prefix, \
 				intraButNotUpstream_df, geneBed_file, \
 				bp_downstream_filter, dir_name)
+		if by=="summit":
+			orig_col_order = list(downstream_peaks_df.columns)
+			downstream_peaks_df = downstream_peaks_df.merge(narrowPeak_df, 
+				how = 'left', left_on=region_cols,
+				right_on=['chr', 'summit_start', 'summit_stop', 'name', 'signal', 'strand'])
+			downstream_peaks_df = downstream_peaks_df.drop(
+				['start_x','stop_x','fold_change', 'pValue', \
+				'qValue', 'summit', 'summit_stop'], axis=1)
+			downstream_peaks_df = downstream_peaks_df.rename(
+				columns = {"start_y":"start", "stop_y":"stop"})
+			downstream_peaks_df = downstream_peaks_df.loc[:,orig_col_order+['summit_start']]
 	if len(downstream_peaks_df) > 0:
 		downstream_peaks_df = downstream_peaks_df.merge(peaks_df, how = 'left', on=list(peaks_df.columns[:6]))
 		downstream_peaks_df.loc[:,"gene_overlap"]=None

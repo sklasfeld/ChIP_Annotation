@@ -81,6 +81,22 @@ def restricted_float(x):
         raise argparse.ArgumentTypeError("%r not in range [0.0, 1.0]"%(x,))
     return x
 
+def gene_overlap_dnase(row):
+    if row.start_b <= row.gene_start:
+        if row.stop_b <= row.gene_start:
+            return(0)
+        elif row.stop_b >= row.gene_stop:
+            return (row.gene_stop-row.gene_start)
+        else:
+            return (row.stop_b-row.gene_start)
+    elif row.start_b < row.gene_stop:
+        if row.stop_b >= row.gene_stop:
+            return (row.gene_stop-row.start_b)
+        else:
+            return (row.stop_b-row.start_b)
+    else:
+        return (0)
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description="This is the main script for \
@@ -451,16 +467,19 @@ if __name__ == '__main__':
     cur_peakfile = args.bed_file
     if args.narrowpeak_file:
         cur_peakfile = args.narrowpeak_file
-        peaks_df = pd.read_csv(cur_peakfile, sep="\t", header=None, \
+        narrowPeak_df = pd.read_csv(args.narrowpeak_file, 
+            sep="\t", header=None, \
             index_col=False, names = peak_info_columns, \
             dtype={"chr" : object, "start" : np.int64, \
             "stop" : np.int64, "name" : object, "signal" : np.float64, \
             "strand" : object, "fold_change": np.float64, \
             "pValue" : np.float64, "qValue" : np.float64, \
             "summit" : np.int64})
+        peaks_df = narrowPeak_df.copy()
 
 
     # compare experiments ChIP peaks with other bed files
+    comparePeaksToBeds_colnames=args.comparePeaksToBedsNames
     if args.comparePeaksToBeds:
         for oldpeakidx in range(0, len(args.comparePeaksToBeds)):
             old_peak_file = args.comparePeaksToBeds[oldpeakidx]  # bed file to compare with
@@ -483,27 +502,26 @@ if __name__ == '__main__':
                     "pValue" : "pValue_b", "qValue" : "qValue_b", 
                     "peak": "summit_b"}
                 if not peakb_feat_dic[args.compBedScores] in list(overlap_df_x.columns):
-                    score_col_unavailable = (("\nERROR: %s column is not available in %s." + \
+                    score_col_unavailable = (("\nWARNING: %s column is not available in %s." + \
                         " You may want to remove/edit your --peakScore parameter" +
                         " or use a different file.\n") % (args.compBedScores, old_peak_file))
-                    sys.exit(score_col_unavailable)
-                peakBScoresInPeakA_df =overlap_df_x.groupby(bed_cols)
-                peakBScores_series = peakBScoresInPeakA_df.apply( \
-                    lambda x: ";".join(str(s) for s in list(x[peakb_feat_dic[args.compBedScores]])))
-                peakBScores_df = peakBScores_series.to_frame().reset_index()
-                peakBScores_df = \
-                    peakBScores_df.rename(columns={0: (old_peak_prefix)})
-                peaks_df = peaks_df.merge(peakBScores_df, how="left", on=bed_cols)
-                peaks_df.loc[:,old_peak_prefix] = \
-                    peaks_df[old_peak_prefix].fillna("False")
-                
-            else:
-                #peaks_df.loc[:,old_peak_prefix] = overlap_df_x.apply( \
-                #    lambda row: row["name"].isin(newPeaksInOldPeaks), axis=1)
-                peaks_df.loc[:,old_peak_prefix] = \
-                    np.where(peaks_df["name"].isin(newPeaksInOldPeaks),True, False)
-                peaks_df.loc[:,old_peak_prefix] = \
-                    peaks_df[old_peak_prefix].fillna(False)
+                    sys.stderr.write(score_col_unavailable)
+                else:
+                    peakBScoresInPeakA_df =overlap_df_x.groupby(bed_cols)
+                    peakBScores_series = peakBScoresInPeakA_df.apply( \
+                        lambda x: ";".join(str(s) for s in list(x[peakb_feat_dic[args.compBedScores]])))
+                    peakBScores_df = peakBScores_series.to_frame().reset_index()
+                    newcolname=(("%s:%s") % (old_peak_prefix, args.compBedScores))
+                    comparePeaksToBeds_colnames.append(newcolname)
+                    peakBScores_df = \
+                        peakBScores_df.rename(columns={0: (newcolname)})
+                    peaks_df = peaks_df.merge(peakBScores_df, how="left", on=bed_cols)
+                    peaks_df.loc[:,newcolname] = \
+                        peaks_df[newcolname].fillna("False")
+            peaks_df.loc[:,old_peak_prefix] = \
+                np.where(peaks_df["name"].isin(newPeaksInOldPeaks),True, False)
+            peaks_df.loc[:,old_peak_prefix] = \
+                peaks_df[old_peak_prefix].fillna(False)
             if not args.keep_tmps:
                 os.remove(compare_peak_file)
         overlap_all_counts = len(peaks_df.loc[peaks_df.apply( \
@@ -511,6 +529,7 @@ if __name__ == '__main__':
                                               "name"].unique())
         counts_list.append("Number of peaks overlap all old peaks\t%i" % \
                            (overlap_all_counts))
+    comparePeaksToText_colnames=args.comparePeaksToTextNames
     # compare experiments ChIP peaks with other peakwise text-files
     if args.comparePeaksToText:
         for textf_index in range(0, len(args.comparePeaksToText)):
@@ -525,12 +544,41 @@ if __name__ == '__main__':
                     "must be tab-delimited tables that contain the following columns: " +
                     "`chrom`, `start`, and `stop`. This is not found in the following " +
                     "file: %s\n") % textf)
+            
             bedColsInTextDf=["chrom","start","stop"]
-            for i in range(3,length(bed_cols)):
+            add=1
+            removeBeforeMerge=[]
+            for i in range(3,len(bed_cols)):
                 if bed_cols[i] in list(textf_df.columns):
-                    bedColsInTextDf.append(bed_cols[i])
+                    if add==1:
+                        bedColsInTextDf.append(bed_cols[i])
+                    else:
+                        removeBeforeMerge.append(bed_cols[i])
+                else:
+                    add=0
+            # change column names in text file to match names in comparison
+            # text file
+            colsList_for_file2 = ["chr_b", "start_b", "stop_b", "name_b", "signal_b", \
+                "strand_b", "fold_change_b", "pValue_b", "qValue_b", "summit_b"]
+            renameBedColsInTextDf_dic={}
+            renameBedColsInTextDf_list=[]
+            for i in range(0,len(bedColsInTextDf)):
+                renameBedColsInTextDf_dic[bedColsInTextDf[i]]=colsList_for_file2[i]
+                renameBedColsInTextDf_list.append(colsList_for_file2[i])
+            textf_df = textf_df.rename(columns=renameBedColsInTextDf_dic)
 
-            comp_bed_df = textf_df.loc[:,bedColsInTextDf].copy()
+            # set column types of textf_df
+            col_dtype_dict = {"chr_b" : object, "start_b" : np.int64, \
+                "stop_b" : np.int64, "name_b" : object, "signal_b" : np.float64, \
+                "strand_b" : object, "fold_change_b": np.float64, \
+                "pValue_b" : np.float64, "qValue_b" : np.float64, \
+                "summit_b" : np.int64, "overlap":np.int64}
+            for textdf_col in renameBedColsInTextDf_list:
+                textf_df[textdf_col] = \
+                    textf_df[textdf_col].astype(col_dtype_dict[textdf_col])
+
+
+            comp_bed_df = textf_df.loc[:,renameBedColsInTextDf_list].copy()
             temp_bed = (("%s/%s.bed.tmp") % (dir_name,textf_prefix))
             comp_bed_df.to_csv(temp_bed, sep="\t", header=False, \
                     index=False)
@@ -538,7 +586,7 @@ if __name__ == '__main__':
             compare_peak_file = ("%s/%s_peaks_found_in_%s.txt" % \
                                  (dir_name, args.prefix, textf_prefix))
             overlap_df_x = genome_locations.compare_bedfiles(args.bed_file, \
-                textf, temp_bed, verbal=args.verbose, \
+                temp_bed, compare_peak_file, verbal=args.verbose, \
                 bedtools_path=args.bedtools_path)
             if not args.keep_tmps:
                 os.remove(temp_bed)
@@ -548,38 +596,37 @@ if __name__ == '__main__':
                                (textf_prefix, overlap_count_x))
             newPeaksInOldPeaks = list(overlap_df_x["name"])
             if args.addTextFeatures:
-                colsList_for_file2 = ["chr_b", "start_b", "stop_b", "name_b", "signal_b", \
-                "strand_b", "fold_change_b", "pValue_b", "qValue_b", "summit_b"]
-                colsList_for_file2 = colsList_for_file2[0:len(bedColsInTextDf)]
-                overlap_df_x = overlap_df_x.merge(textf_df, how=left, 
+                
+                if len(removeBeforeMerge) >0 :
+                    textf_df = textf_df.drop(removeBeforeMerge, axis=1)
+                
+                colsList_for_file2 = colsList_for_file2[0:len(renameBedColsInTextDf_list)]
+                overlap_df_x = overlap_df_x.merge(textf_df, how="left", 
                     left_on=colsList_for_file2,
-                    right_on=bedColsInTextDf)
-                for textColOfInterest in addTextFeatures_dic:
+                    right_on=renameBedColsInTextDf_list)
+                for textColOfInterest in addTextFeatures_dic[textf_prefix]:
+
                     if not textColOfInterest in list(overlap_df_x.columns):
                         score_col_unavailable = (("\nERROR: %s column is not available in %s." + \
                             " You may want to remove/edit your --addTextFeatures parameter" +
                             " or use a different file.\n") % (textColOfInterest, textf))
                         sys.exit(score_col_unavailable)
-
+                    peakBScoresInPeakA_df =overlap_df_x.groupby(bed_cols)
+                    peakBScores_series = peakBScoresInPeakA_df.apply( \
+                        lambda x: ";".join(str(s) for s in list(x[textColOfInterest])))
+                    peakBScores_df = peakBScores_series.to_frame().reset_index()
+                    newcolname=(("%s:%s") % (textf_prefix, textColOfInterest))
+                    comparePeaksToText_colnames.append(newcolname)
+                    peakBScores_df = \
+                        peakBScores_df.rename(columns={0: (newcolname)})
+                    peaks_df = peaks_df.merge(peakBScores_df, how="left", on=bed_cols)
+                    peaks_df.loc[:,newcolname] = \
+                    peaks_df[newcolname].fillna("False")
                 
-                        peakBScoresInPeakA_df =overlap_df_x.groupby(bed_cols)
-                        peakBScores_series = peakBScoresInPeakA_df.apply( \
-                            lambda x: ";".join(str(s) for s in list(x[textColOfInterest])))
-                        peakBScores_df = peakBScores_series.to_frame().reset_index()
-                        newcolname=(("%s:%s") % (textf_prefix, textColOfInterest))
-                        peakBScores_df = \
-                            peakBScores_df.rename(columns={0: (newcolname)})
-                        peaks_df = peaks_df.merge(peakBScores_df, how="left", on=bed_cols)
-                        peaks_df.loc[:,textf_prefix] = \
-                        peaks_df[textf_prefix].fillna("False")
-                
-            else:
-                #peaks_df.loc[:,textf_prefix] = overlap_df_x.apply( \
-                #    lambda row: row["name"].isin(newPeaksInOldPeaks), axis=1)
-                peaks_df.loc[:,textf_prefix] = \
-                    np.where(peaks_df["name"].isin(newPeaksInOldPeaks),True, False)
-                peaks_df.loc[:,textf_prefix] = \
-                    peaks_df[textf_prefix].fillna(False)
+            peaks_df.loc[:,textf_prefix] = \
+                np.where(peaks_df["name"].isin(newPeaksInOldPeaks),True, False)
+            peaks_df.loc[:,textf_prefix] = \
+                peaks_df[textf_prefix].fillna(False)
             if not args.keep_tmps:
                 os.remove(compare_peak_file)
         overlap_all_counts = len(peaks_df.loc[peaks_df.apply( \
@@ -587,7 +634,6 @@ if __name__ == '__main__':
                                               "name"].unique())
         counts_list.append("Number of peaks overlap all old peaks\t%i" % \
                            (overlap_all_counts))
-    
     # compare experiments ChIP peaks with RNA DE experiments
     for rna_samp in range(0, len(args.compareRNAdiffExp)):
         rna_diffExp_file = args.compareRNAdiffExp[rna_samp]
@@ -664,6 +710,7 @@ if __name__ == '__main__':
 
 
     # add dnase info to peakwise files
+    dnase_peakwise_colnames=args.dnase_names
     if args.dnase_files:
         for d_idx in range(0, len(args.dnase_files)):
             dFile = args.dnase_files[d_idx]
@@ -673,8 +720,8 @@ if __name__ == '__main__':
             dnase_table = genome_locations.compare_bedfiles(args.bed_file, \
                 dFile, dnase_info_file, verbal=args.verbose, \
                 bedtools_path=args.bedtools_path)
-            dnase_table_cols_needed = list(range(0, 6)) + [dnase_table.shape[1] - 1]
-            dnase_table = dnase_table.iloc[:, dnase_table_cols_needed]
+            #dnase_table_cols_needed = list(range(0, 6)) + [dnase_table.shape[1] - 1]
+            #dnase_table = dnase_table.iloc[:, dnase_table_cols_needed]
             peaksInDHS = list(dnase_table["name"].unique())
             peaks_df.loc[:, dPrefix] = peaks_df.apply( \
                 lambda row: row["name"] in peaksInDHS, axis=1)
@@ -683,8 +730,32 @@ if __name__ == '__main__':
                 len(dnase_table.loc[:, bed_cols].drop_duplicates())
             counts_list.append("number of peaks within DNAse sites (%s) \t%i" \
                                % (dPrefix, peakswithDHS_count))
+            
+            # count what percent of the DNAse region overlaps the peak
+            dnase_table.astype(
+                {'start':np.float64,
+                'stop':np.float64,
+                'overlap':np.float64})
+            dnase_table["percOverlap"] = \
+                dnase_table["overlap"] / (
+                    dnase_table["stop"] - dnase_table["start"])
+            dnase_table_grouped =dnase_table.groupby(bed_cols)
+            peakPercOverlap_series = dnase_table_grouped.apply( \
+                lambda x: ";".join(str(s) for s in list(x["percOverlap"])))
+            peakPercOverlap_df = peakPercOverlap_series.to_frame().reset_index()
+            newcolname=(("%s:percentDNAseOverlapsPeak") % (dPrefix))
+            dnase_peakwise_colnames.append(newcolname)
+            peakPercOverlap_df = \
+                peakPercOverlap_df.rename(columns={0: (newcolname)})
+            peaks_df = peaks_df.merge(peakPercOverlap_df, how="left", on=bed_cols)
+            peaks_df.loc[:,newcolname] = \
+            peaks_df[newcolname].fillna("False")
+            
+
+
             if not (args.keep_tmps):
                 os.remove(dnase_info_file)
+
 
     # add mnase info to peakwise files
     if args.mnase_files:
@@ -715,14 +786,16 @@ if __name__ == '__main__':
     ##		intragenic
     ##		${noFilter_tss_upstream} bp upstream
     ##		${noFilter_TTS_downstream} bp downstream
-    round1_peaks = round1_annotation.r1_annotate(gene_alist, args.gene_bedfile, \
-        args.bed_file, peaks_df, args.prefix, dir_name, \
-        gene_alist_cols=args.gene_alist_cols, \
-        per_inter_filter=args.percent_inter, \
-        bp_upstream_filter=args.filter_tss_upstream, \
-        bp_downstream_filter=args.filter_tts_downstream, \
-        ignore_conv_peaks=args.ignore_conv_peaks, \
+    round1_peaks = round1_annotation.r1_annotate('peak',
+        gene_alist, args.gene_bedfile,
+        args.bed_file, peaks_df, args.prefix, dir_name,
+        gene_alist_cols=args.gene_alist_cols,
+        per_inter_filter=args.percent_inter,
+        bp_upstream_filter=args.filter_tss_upstream,
+        bp_downstream_filter=args.filter_tts_downstream,
+        ignore_conv_peaks=args.ignore_conv_peaks,
         bedtools_path=args.bedtools_path, verbose=args.verbose)
+
 
     round1_peaks["distance_from_gene"] = \
         round1_peaks["distance_from_gene"].astype('float64')
@@ -735,6 +808,37 @@ if __name__ == '__main__':
     count_downstream_genes_r1 = len( \
         round1_peaks.loc[round1_peaks["distance_from_gene"] > 0, \
                          bed_cols].drop_duplicates())
+
+    ## simultaneously annotate summits
+    if args.narrowpeak_file:
+        if 1 == 0:
+            summit_bed = narrowPeak_df.copy()
+            summit_bed['start'] = summit_bed['start'] + \
+                summit_bed['summit']
+            summit_bed['stop'] = summit_bed['start'] + 1
+            summit_bed = summit_bed.loc[:,bed_cols]
+            temp_summit_bed_file = (("%s/%s_summits.bed.tmp") % (dir_name,args.prefix))
+            summit_bed.to_csv(temp_summit_bed_file, sep="\t", header=False, \
+                        index=False)
+        round1_summits = round1_annotation.r1_annotate('summit',
+            gene_alist, args.gene_bedfile, \
+            args.narrowpeak_file, peaks_df, args.prefix, dir_name, \
+            gene_alist_cols=args.gene_alist_cols, \
+            per_inter_filter=args.percent_inter, \
+            bp_upstream_filter=args.filter_tss_upstream, \
+            bp_downstream_filter=args.filter_tts_downstream, \
+            ignore_conv_peaks=args.ignore_conv_peaks, \
+            bedtools_path=args.bedtools_path, verbose=args.verbose)
+        round1_summits = round1_summits.loc[:,bed_cols+["summit_start"]]
+        round1_peaks = round1_peaks.merge(
+            round1_summits, on=bed_cols,
+            how='left')
+        round1_peaks["summit_ann"] = round1_peaks.apply(
+            lambda row: (row['start'] + 
+                row["summit"]) == 
+                row["summit_start"], axis=1)
+        round1_peaks = round1_peaks.drop(["summit_start"],axis=1)
+
     if args.verbose:
         # number intragenic
         sys.stdout.write("Number of Peaks INSIDE Genes: %i\n" % \
@@ -883,13 +987,14 @@ if __name__ == '__main__':
     # reorganize columns
     all_peaks_col_order = bed_cols + ['roundOfAnnotation']
     if args.narrowpeak_file:
-        all_peaks_col_order += ['qValue', 'summit']
+        all_peaks_col_order += ['qValue', 'summit', 'summit_ann']
     all_peaks_col_order = all_peaks_col_order + \
                           ['gene_id'] + args.gene_alist_cols + \
                           ['gene_overlap', 'distance_from_gene'] + \
-                          args.comparePeaksToBedsNames + \
+                          comparePeaksToBeds_colnames + \
+                          comparePeaksToText_colnames + \
                           args.motifNames + \
-                          args.dnase_names + \
+                          dnase_peakwise_colnames + \
                           args.mnase_names
     
 
@@ -927,6 +1032,59 @@ if __name__ == '__main__':
             all_peaks_df = all_peaks_df.merge(rna_counts_df, on="gene_id", \
                 how = "left")
 
+    # For DNAse peaks that overlap with intragenic peaks,
+    # list what percentage of the gene does the DNAse region
+    # overlap
+    dnase_genewise_cols=[]
+    dnase_peakAndGenewise_cols=[]
+    if args.dnase_files:
+        intragenic_peaks_df = all_peaks_df.loc[(
+            all_peaks_df['distance_from_gene']==0),bed_cols+['gene_id']].copy()
+        intragenic_peaks_df = \
+            intragenic_peaks_df.merge(
+                gene_bedfile_df, on='gene_id',
+                how='left')
+        for d_idx in range(0, len(args.dnase_files)):
+            dFile = args.dnase_files[d_idx]
+            dPrefix = args.dnase_names[d_idx]
+            dnase_info_file = ("%s/peaks_in_dnase_%s.txt" % (dir_name, \
+                                                             dPrefix))
+            dnase_table = genome_locations.compare_bedfiles(args.bed_file, \
+                dFile, dnase_info_file, verbal=args.verbose, \
+                bedtools_path=args.bedtools_path)
+            dnase_table = intragenic_peaks_df.merge(dnase_table, 
+                on=bed_cols, how="left")
+            
+            dnase_table['gene_overlap'] = dnase_table.apply(
+                lambda x: gene_overlap_dnase(x), 
+                axis=1).astype(np.float64)
+            dnase_table['perc_gene_overlap'] = dnase_table.apply( lambda row: 
+                row['gene_overlap'] / (row['gene_stop']- row['gene_start']),
+                axis=1)
+            dnase_table = dnase_table.loc[:,bed_cols+['gene_id','perc_gene_overlap']].copy()
+            newcolname=(("%s:IntraGeneOverlap") % (dPrefix))
+            dnase_peakAndGenewise_cols.append(newcolname)
+            dnase_table = dnase_table.rename(index=str, 
+                columns={"perc_gene_overlap": newcolname})
+            all_peaks_df = all_peaks_df.merge(dnase_table, 
+                on=bed_cols+['gene_id'], how='left')
+
+
+            gene_dnase_file = ("%s/peaks_in_dnase_%s.txt" % (dir_name, \
+                                                             dPrefix))
+            gene_dnase_df = genome_locations.compare_bedfiles(dFile, \
+                args.gene_bedfile, gene_dnase_file, verbal=args.verbose, \
+                bedtools_path=args.bedtools_path)
+            gene_dnase_df['gene_overlap'] = gene_dnase_df.apply(lambda row:
+                row['overlap'] / (row['stop_b']- row['start_b']),
+                axis=1)
+            gene_dnase_df = gene_dnase_df.loc[:,['name_b','gene_overlap']]
+            newcolname=(("%s:percentDNAseInGene") % (dPrefix))
+            dnase_genewise_cols.append(newcolname)
+            gene_dnase_df.columns = ["gene_id",newcolname]
+            all_peaks_df = all_peaks_df.merge(gene_dnase_df, 
+                on=['gene_id'], how='left')
+            
 
     # Assign DE genes to peaks
     if args.round2ann:
@@ -1026,11 +1184,12 @@ if __name__ == '__main__':
     # Print out Peak-centric datatable...
     peak_group_cols = bed_cols + ['roundOfAnnotation']
     if args.narrowpeak_file:
-        peak_group_cols += ['qValue', 'summit']
+        peak_group_cols += ['qValue', 'summit', 'summit_ann']
     peak_group_cols = peak_group_cols + \
-                      args.comparePeaksToBedsNames + \
+                      comparePeaksToBeds_colnames + \
+                      comparePeaksToText_colnames + \
                       args.motifNames + \
-                      args.dnase_names + \
+                      dnase_peakwise_colnames + \
                       args.mnase_names
     
     ## note: non-peak_centric columns = gene_id, Alias, distance_from_gene
@@ -1078,6 +1237,17 @@ if __name__ == '__main__':
             peak_tpmGene_df.columns = bed_cols + [rna_name]
             peak_ann_df = peak_ann_df.merge(peak_tpmGene_df, how='left', \
                                             on=bed_cols)
+    
+    ## if applicable, list percentage that DNAse (which overlaps with
+    ## intragenic peak) overlaps gene
+    if args.dnase_files:
+        for dnase_pg_col in dnase_peakAndGenewise_cols + dnase_genewise_cols:
+            peak_dnase2Gene_series = peak_grouped_df.apply(lambda x: ";".join(
+                str(s) for s in list(x[dnase_pg_col].unique())))
+            peak_dnase2Gene_df = peak_dnase2Gene_series.to_frame().reset_index()
+            peak_dnase2Gene_df.columns = bed_cols + [dnase_pg_col]
+            peak_ann_df = peak_ann_df.merge(peak_dnase2Gene_df, how='left', \
+                                            on=bed_cols)
     ## if applicable, list True (or RNA DE value) if any of the genes 
     ## that the peak is annotated to is DE in each sample
     if args.compareRNAdiffExp:
@@ -1118,9 +1288,10 @@ if __name__ == '__main__':
     peak2gene_info_cols = ['numGenes', 'gene_id'] + args.gene_alist_cols + \
         ['gene_overlap', 'distance_from_gene']
     peak_col_order = peak_group_cols[0:7] + peak2gene_info_cols + \
-                     rna_counts_names + compareRNAdiffExpCols + \
-                     peak_group_cols[7:] + args.otherChipPrefix + \
-                     otherChIPFeatures_cols
+        rna_counts_names + compareRNAdiffExpCols + \
+        dnase_genewise_cols + peak_group_cols[7:] + \
+        args.otherChipPrefix + otherChIPFeatures_cols \
+        + dnase_peakAndGenewise_cols
 
     peak_ann_df = peak_ann_df.loc[:, peak_col_order]
     pd.set_option('float_format', '{:.2f}'.format)
@@ -1136,9 +1307,9 @@ if __name__ == '__main__':
 
     # Print out Gene-centric datatable...
     gene_group_cols = ["gene_id"] + args.gene_alist_cols + \
-                        rna_counts_names + \
-                        compareRNAdiffExpCols + args.otherChipPrefix + \
-                        otherChIPFeatures_cols
+        rna_counts_names + compareRNAdiffExpCols + \
+        dnase_genewise_cols + args.otherChipPrefix + \
+        otherChIPFeatures_cols
     all_ann_peaks = all_peaks_df.loc[all_peaks_df["gene_id"].notnull(),:].copy()
     geneCentricColsOnly_df = all_ann_peaks.loc[:,gene_group_cols].copy()
     
@@ -1180,10 +1351,27 @@ if __name__ == '__main__':
         gene_qval_df = gene_qval_series.to_frame().reset_index()
         gene_qval_df.columns = ['gene_id', 'qValue']
         gene_ann_df = gene_ann_df.merge(gene_qval_df, how='outer', on='gene_id')
+        gene_summitAnn_series = gene_groups_df.apply(lambda x: ";".join(str(s) for s in list(x['summit_ann'].unique())))
+        gene_summitAnn_df = gene_summitAnn_series.to_frame().reset_index()
+        gene_summitAnn_df.columns = ['gene_id', 'summit_ann']
+        gene_ann_df = gene_ann_df.merge(gene_summitAnn_df, how='outer', on='gene_id')
     ## list True if any of the peaks that the gene is annotated to is found in a
     ## a different ChIP sample (comparePeaksToBeds)
     if args.comparePeaksToBeds:
-        for peak_sample in args.comparePeaksToBedsNames:
+        for peak_sample in comparePeaksToBeds_colnames:
+            #gene_peakcomp_series = gene_groups_df.apply(lambda x: x[peak_sample].any() != False)
+            #gene_peakcomp_series = gene_groups_df.apply(lambda x: ";".join([str(y) for y in x[peak_sample] if y != False and y != "False"]))
+            gene_peakcomp_series = gene_groups_df.apply(lambda x:listOrFalse(x[peak_sample]))
+            gene_peakcomp_df = gene_peakcomp_series.to_frame().reset_index()
+            gene_peakcomp_df.columns = ['gene_id', peak_sample]
+            gene_ann_df = gene_ann_df.merge(gene_peakcomp_df, how='left', \
+                                            on='gene_id')
+            gene_ann_df.loc[:,peak_sample].fillna(False, inplace=True)
+
+    ## list True if any of the peaks that the gene is annotated to is found in a
+    ## a different ChIP sample (comparePeaksToBeds)
+    if args.comparePeaksToText:
+        for peak_sample in comparePeaksToText_colnames:
             #gene_peakcomp_series = gene_groups_df.apply(lambda x: x[peak_sample].any() != False)
             #gene_peakcomp_series = gene_groups_df.apply(lambda x: ";".join([str(y) for y in x[peak_sample] if y != False and y != "False"]))
             gene_peakcomp_series = gene_groups_df.apply(lambda x:listOrFalse(x[peak_sample]))
@@ -1206,8 +1394,12 @@ if __name__ == '__main__':
     ## list True if any of the peaks that the gene is annotated to is found in a
     ## a DHS (dnase_files)
     if args.dnase_files:
-        for dhs_col in args.dnase_names:
-            gene_dhs_series = gene_groups_df.apply(lambda x: x[dhs_col].any())
+        for dhs_col in dnase_peakwise_colnames + dnase_peakAndGenewise_cols:
+            if dhs_col in args.dnase_names:
+                gene_dhs_series = gene_groups_df.apply(lambda x: x[dhs_col].any())
+            else:
+                gene_dhs_series = gene_groups_df.apply(
+                    lambda x: ";".join(str(s) for s in list(x[dhs_col].unique())))
             gene_dhs_df = gene_dhs_series.to_frame().reset_index()
             gene_dhs_df.columns = ['gene_id', dhs_col]
             gene_ann_df = gene_ann_df.merge(gene_dhs_df, how='left', \
