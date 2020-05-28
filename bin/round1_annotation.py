@@ -165,7 +165,7 @@ def r1_annotate(by, gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 		(bedtools_path, intra_limit_param, bed_fname, geneBed_file, bedtools_intragenic_file))
 	cmd(bedtools_intragenic_cmd, verbose)
 	genesOverlap_cols =region_cols + \
-		["gene_chr", "gene_chromStart", "gene_chromEnd", "gene_id", \
+		["gene_chr", "gene_start", "gene_stop", "gene_id", \
 		"gene_score", "gene_strand"] + ["gene_overlap"]
 	if wc(bedtools_intragenic_file, verbose) == 0:
 		if(bp_upstream_filter == 0 and bp_downstream_filter == 0):
@@ -181,14 +181,14 @@ def r1_annotate(by, gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 			names=genesOverlap_cols, index_col=False, dtype={"chr" : object, \
 				"start" : np.int64, "stop" : np.int64, "name" : object, \
 				"signal" : np.float64, "strand":object, "gene_chr" : object, \
-				"gene_chromStart" : np.int64, "gene_chromEnd" : np.int64, \
+				"gene_start" : np.int64, "gene_stop" : np.int64, \
 				"gene_id" : object, "gene_score" : np.float64, \
 				"gene_strand":object, "gene_overlap": np.float64})
 
 		intragenic_peaks_df.loc[:,"gene_overlap"] = (
 			intragenic_peaks_df.loc[:,"gene_overlap"] /
-			np.float64(intragenic_peaks_df.loc[:,"gene_chromEnd"] - 
-				intragenic_peaks_df.loc[:,"gene_chromStart"]))
+			np.float64(intragenic_peaks_df.loc[:,"gene_stop"] - 
+				intragenic_peaks_df.loc[:,"gene_start"]))
 		intragenic_peaks_df.loc[:,"distance_from_gene"]=0
 		if by=="summit":
 			orig_col_order = list(intragenic_peaks_df.columns)

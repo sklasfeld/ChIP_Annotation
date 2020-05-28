@@ -437,6 +437,15 @@ if __name__ == '__main__':
     count_file = ("%s/%s_counts.txt" % (dir_name, args.prefix))
 
     counts_list = list()
+
+    # import gene bed file
+    gene_bedfile_df_cols = ["gene_chr", "gene_start", "gene_stop", \
+        "gene_id", "gene_score", "gene_strand"]
+    gene_bedfile_df = pd.read_csv(args.gene_bedfile, sep='\t', header=None, \
+        names=gene_bedfile_df_cols, dtype={"gene_chr" : object, \
+        "gene_start" : np.int64, "gene_stop" : np.int64, "gene_id" : object, \
+        "gene_score" : np.float64, "gene_strand":object})
+
     # roundOfAnnotation = {} # roundOfAnnotation[peak_name] = round_annotated
     # 1 = round 1 ()
     # 2 = round 2 (adopted peaks)
@@ -810,16 +819,10 @@ if __name__ == '__main__':
                          bed_cols].drop_duplicates())
 
     ## simultaneously annotate summits
+    ### Note that `round1_peaks` has a row for each
+    ### peak-gene pairing. Therefore peaks with multiple
+    ### gene annotations will be annotated in multiple rows.
     if args.narrowpeak_file:
-        if 1 == 0:
-            summit_bed = narrowPeak_df.copy()
-            summit_bed['start'] = summit_bed['start'] + \
-                summit_bed['summit']
-            summit_bed['stop'] = summit_bed['start'] + 1
-            summit_bed = summit_bed.loc[:,bed_cols]
-            temp_summit_bed_file = (("%s/%s_summits.bed.tmp") % (dir_name,args.prefix))
-            summit_bed.to_csv(temp_summit_bed_file, sep="\t", header=False, \
-                        index=False)
         round1_summits = round1_annotation.r1_annotate('summit',
             gene_alist, args.gene_bedfile, \
             args.narrowpeak_file, peaks_df, args.prefix, dir_name, \
@@ -829,10 +832,13 @@ if __name__ == '__main__':
             bp_downstream_filter=args.filter_tts_downstream, \
             ignore_conv_peaks=args.ignore_conv_peaks, \
             bedtools_path=args.bedtools_path, verbose=args.verbose)
-        round1_summits = round1_summits.loc[:,bed_cols+["summit_start"]]
+        round1_summits = round1_summits.loc[:, (
+            bed_cols + gene_bedfile_df_cols + ["summit_start"])]
+
         round1_peaks = round1_peaks.merge(
-            round1_summits, on=bed_cols,
+            round1_summits, on=bed_cols+ gene_bedfile_df_cols,
             how='left')
+        
         round1_peaks["summit_ann"] = round1_peaks.apply(
             lambda row: (row['start'] + 
                 row["summit"]) == 
@@ -898,12 +904,6 @@ if __name__ == '__main__':
     outlier_df = peaks_df[~peaks_df["name"].isin(round1_peaks["name"])]
 
     # compare gene locations to outliers
-    gene_bedfile_df_cols = ["gene_chr", "gene_start", "gene_stop", \
-        "gene_id", "gene_score", "gene_strand"]
-    gene_bedfile_df = pd.read_csv(args.gene_bedfile, sep='\t', header=None, \
-        names=gene_bedfile_df_cols, dtype={"gene_chr" : object, \
-        "gene_start" : np.int64, "gene_stop" : np.int64, "gene_id" : object, \
-        "gene_score" : np.float64, "gene_strand":object})
 
     # annotate peaks that have not been annotated yet to DE genes within a bp limit
     #### HERE I AM
@@ -987,15 +987,15 @@ if __name__ == '__main__':
     # reorganize columns
     all_peaks_col_order = bed_cols + ['roundOfAnnotation']
     if args.narrowpeak_file:
-        all_peaks_col_order += ['qValue', 'summit', 'summit_ann']
+        all_peaks_col_order += ['qValue', 'summit']
+    all_peaks_col_order = all_peaks_col_order + ['gene_id'] + \
+                          args.gene_alist_cols 
+    if args.narrowpeak_file:
+        all_peaks_col_order += ['summit_ann'] 
     all_peaks_col_order = all_peaks_col_order + \
-                          ['gene_id'] + args.gene_alist_cols + \
-                          ['gene_overlap', 'distance_from_gene'] + \
-                          comparePeaksToBeds_colnames + \
-                          comparePeaksToText_colnames + \
-                          args.motifNames + \
-                          dnase_peakwise_colnames + \
-                          args.mnase_names
+            ['gene_overlap', 'distance_from_gene'] + \
+            comparePeaksToBeds_colnames + comparePeaksToText_colnames + \
+            args.motifNames + dnase_peakwise_colnames + args.mnase_names
     
 
     all_peaks_df = all_peaks_df.loc[:, all_peaks_col_order]
@@ -1184,7 +1184,7 @@ if __name__ == '__main__':
     # Print out Peak-centric datatable...
     peak_group_cols = bed_cols + ['roundOfAnnotation']
     if args.narrowpeak_file:
-        peak_group_cols += ['qValue', 'summit', 'summit_ann']
+        peak_group_cols += ['qValue', 'summit']
     peak_group_cols = peak_group_cols + \
                       comparePeaksToBeds_colnames + \
                       comparePeaksToText_colnames + \
@@ -1192,7 +1192,8 @@ if __name__ == '__main__':
                       dnase_peakwise_colnames + \
                       args.mnase_names
     
-    ## note: non-peak_centric columns = gene_id, Alias, distance_from_gene
+    ## note: non-peak_centric columns = gene_id, summit_ann, 
+    # Alias, distance_from_gene
     peak_grouped_df = all_peaks_df.groupby(bed_cols)
     peak_centric_cols_df = all_peaks_df.loc[:, peak_group_cols]
     
@@ -1210,6 +1211,7 @@ if __name__ == '__main__':
     peak_gid_df = peak_gid_series.to_frame().reset_index()
     peak_gid_df.columns = bed_cols + ['gene_id']
     peak_ann_df = peak_ann_df.merge(peak_gid_df, how='left', on=bed_cols)
+    ##
     ## list gene names that annotate to peaks
     if len(args.gene_alist_cols)>0:
         for gene_ann_col in args.gene_alist_cols:
@@ -1221,13 +1223,28 @@ if __name__ == '__main__':
     peak_gOverlap_series = peak_grouped_df.apply(lambda x: ";".join(str(s) for s in list(x["gene_overlap"].unique())))
     peak_gOverlap_df = peak_gOverlap_series.to_frame().reset_index()
     peak_gOverlap_df.columns = bed_cols + ['gene_overlap']
-    peak_ann_df = peak_ann_df.merge(peak_gOverlap_df, how='outer', on=bed_cols)
+    peak_ann_df = peak_ann_df.merge(peak_gOverlap_df, 
+        how='outer', on=bed_cols)
 
     ## list distances of genes that annotate to peaks
     peak_dist_series = peak_grouped_df.apply(lambda x: ";".join(str(s) for s in list(x["distance_from_gene"].unique())))
     peak_dist_df = peak_dist_series.to_frame().reset_index()
     peak_dist_df.columns = bed_cols + ['distance_from_gene']
-    peak_ann_df = peak_ann_df.merge(peak_dist_df, how='outer', on=bed_cols)
+    peak_ann_df = peak_ann_df.merge(peak_dist_df, 
+        how='outer', on=bed_cols)
+    
+    ## if applicable, list whether the summit also annotates the gene
+    if args.narrowpeak_file:
+        peak_summitAnn_series = peak_grouped_df.apply(
+            lambda x: ";".join(
+            str(s) for s in list(x.loc[:,bed_cols+["summit_ann"]].
+            drop_duplicates()["summit_ann"])))
+        peak_summitAnn_df = peak_summitAnn_series.to_frame().reset_index()
+        peak_summitAnn_df.columns = bed_cols + ['summit_ann']
+        peak_ann_df = peak_ann_df.merge(peak_summitAnn_df, 
+            how='left', on=bed_cols)
+    
+
     ## if applicable, list counts (eg.TPMs) of the gene expression for 
     ## each RNA sample
     if args.RNAcounts:
@@ -1286,7 +1303,7 @@ if __name__ == '__main__':
     ## reorganize data-table to show gene columns closer to peak columns and
     ## extra info towards the later columns
     peak2gene_info_cols = ['numGenes', 'gene_id'] + args.gene_alist_cols + \
-        ['gene_overlap', 'distance_from_gene']
+        ['gene_overlap', 'distance_from_gene', 'summit_ann']
     peak_col_order = peak_group_cols[0:7] + peak2gene_info_cols + \
         rna_counts_names + compareRNAdiffExpCols + \
         dnase_genewise_cols + peak_group_cols[7:] + \
