@@ -3,7 +3,6 @@
 import os
 import argparse
 import sys
-import subprocess
 import pandas as pd
 import numpy as np
 from collections import defaultdict
@@ -12,14 +11,6 @@ import bin.round1_annotation as round1_annotation
 import bin.round2_annotation as round2_annotation
 import bin.genome_locations as genome_locations
 pd.options.mode.chained_assignment = 'raise'
-
-
-def cmd(cmd_str, speak):
-    """print and run bash command"""
-    if speak:
-        sys.stdout.write("%s\n" % cmd_str)
-        sys.stdout.flush()
-    os.system(cmd_str)
 
 
 def text2vector(filename):
@@ -42,34 +33,6 @@ def listOrFalse(res_series):
     else:
         string_list = ";".join([str(y) for y in res_series if (y != False and y != "False")])
         return string_list
-
-
-
-def wc(file_name, verbose=False, samtools_path=""):
-    """count the number of lines in a file or reads in a sam/bam file"""
-    if (not os.path.isfile(file_name)):
-        sys.stdout.write("Count: 0\n")
-        sys.stdout.flush()
-        return (0)
-    else:
-        cmd = ("wc -l %s" % file_name)
-    if os.path.splitext(file_name)[1] == ".gz":
-        cmd = ("gunzip -c %s | wc -l" % file_name)
-    elif os.path.splitext(file_name)[1] == ".bam" or \
-                    os.path.splitext(file_name)[1] == ".sam" or \
-                    os.path.splitext(file_name)[1] == ".tagAlign":
-        cmd = ("%ssamtools view -F 4 -c %s" % (samtools_path, file_name))
-    if verbose:
-        sys.stdout.write("%s\n" % cmd)
-        sys.stdout.flush()
-    ps = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,
-                          stderr=subprocess.STDOUT)
-    output = ps.communicate()[0]
-    break_out = output.split()
-    if verbose:
-        sys.stdout.write("Count: %i\n" % int(break_out[0]))
-        sys.stdout.flush()
-    return int(break_out[0])
 
 def restricted_float(x):
     try:
@@ -115,21 +78,15 @@ if __name__ == '__main__':
     parser.add_argument('dir_name', help='directory where output will go')
     parser.add_argument('bed_file', help='bed file containing ChIP peaks. \
         Warning: peaks should have original peak names.')
-    parser.add_argument('gene_alist', help="A file that contains gene IDs \
-        and their aliases. The file must be tab-delimited and have \
-        atleast 1 column with the label `gene_id` \
-        See `Araport11/Araport11_gene_info.txt file as an example \
-        of the format. This is the default annotation")
+    parser.add_argument('gene_alist', help="A tab-delimited file that \
+        contains gene IDs and their aliases. The file must have \
+        atleast 1 column with the label `gene_id`")
     parser.add_argument('gene_bedfile', help='bed file with gene locations')
     parser.add_argument('-n', '--narrowpeak_file', help='narrowPeak file \
         containing ChIP peaks.')
     parser.add_argument('-ga', '--gene_alist_cols', nargs='*', help='columns \
         in `gene_alist` file that will be used to annotate each of the \
         gene ids. (eg. gene_name)', required=False, default=[])
-    parser.add_argument('-bp', '--bedtools_path', help='path to bedtools', \
-        default="")
-    parser.add_argument('-sp', '--samtools_path', help='path to samtools', \
-        default="")
     parser.add_argument('-pi', '--percent_inter', help='round1 \
         annotation only annotates genes that overlap at least this \
         percent of the gene. For example if this is set to 1 then \
@@ -372,12 +329,6 @@ if __name__ == '__main__':
             colList = prefixNCols[1].split(",")
             addTextFeatures_dic[prefixNCols[0]]=colList
 
-    # set paths 
-    if len(args.bedtools_path) > 0:
-        args.bedtools_path = os.path.expanduser(args.bedtools_path)+"/"
-    if len(args.samtools_path) > 0:
-        args.samtools_path = os.path.expanduser(args.bedtools_path)+"/"
-
 
     if len(args.otherChipGeneAnn)>0 and len(args.otherChipPrefix)>0:
         if len(args.otherChipGeneAnn) != len(args.otherChipPrefix):
@@ -432,7 +383,6 @@ if __name__ == '__main__':
             "each gene!\n")
 
     dir_name = os.path.abspath(args.dir_name)
-    gene_alist = args.gene_alist
 
     count_file = ("%s/%s_counts.txt" % (dir_name, args.prefix))
 
@@ -493,11 +443,8 @@ if __name__ == '__main__':
         for oldpeakidx in range(0, len(args.comparePeaksToBeds)):
             old_peak_file = args.comparePeaksToBeds[oldpeakidx]  # bed file to compare with
             old_peak_prefix = args.comparePeaksToBedsNames[oldpeakidx]  # prefix for bed file to compare with
-            compare_peak_file = ("%s/%s_peaks_found_in_%s.txt" % \
-                                 (dir_name, args.prefix, old_peak_prefix))
             overlap_df_x = genome_locations.compare_bedfiles(args.bed_file, \
-                old_peak_file, compare_peak_file, verbal=args.verbose, \
-                bedtools_path=args.bedtools_path)
+                old_peak_file, verbal=args.verbose)
             # count number of peaks that overlap this other ChIP experiment
             overlap_count_x = len(overlap_df_x["name"].unique())
             counts_list.append("Number of peaks overlap %s\t%i" % \
@@ -531,8 +478,6 @@ if __name__ == '__main__':
                 np.where(peaks_df["name"].isin(newPeaksInOldPeaks),True, False)
             peaks_df.loc[:,old_peak_prefix] = \
                 peaks_df[old_peak_prefix].fillna(False)
-            if not args.keep_tmps:
-                os.remove(compare_peak_file)
         overlap_all_counts = len(peaks_df.loc[peaks_df.apply( \
             lambda row: all(row[args.comparePeaksToBedsNames]), axis=1), \
                                               "name"].unique())
@@ -591,12 +536,8 @@ if __name__ == '__main__':
             temp_bed = (("%s/%s.bed.tmp") % (dir_name,textf_prefix))
             comp_bed_df.to_csv(temp_bed, sep="\t", header=False, \
                     index=False)
-
-            compare_peak_file = ("%s/%s_peaks_found_in_%s.txt" % \
-                                 (dir_name, args.prefix, textf_prefix))
             overlap_df_x = genome_locations.compare_bedfiles(args.bed_file, \
-                temp_bed, compare_peak_file, verbal=args.verbose, \
-                bedtools_path=args.bedtools_path)
+                temp_bed, verbal=args.verbose)
             if not args.keep_tmps:
                 os.remove(temp_bed)
             # count number of peaks that overlap this other ChIP experiment
@@ -636,8 +577,6 @@ if __name__ == '__main__':
                 np.where(peaks_df["name"].isin(newPeaksInOldPeaks),True, False)
             peaks_df.loc[:,textf_prefix] = \
                 peaks_df[textf_prefix].fillna(False)
-            if not args.keep_tmps:
-                os.remove(compare_peak_file)
         overlap_all_counts = len(peaks_df.loc[peaks_df.apply( \
             lambda row: all(row[args.comparePeaksToBedsNames]), axis=1), \
                                               "name"].unique())
@@ -690,13 +629,8 @@ if __name__ == '__main__':
         for m_idx in range(0, len(args.motifFiles)):
             mFile = args.motifFiles[m_idx]
             mPrefix = args.motifNames[m_idx]
-
-            motif_info_file = ("%s/%s_peaks_in_motif_%s.txt" % (dir_name, \
-                                                             args.prefix, \
-                                                             mPrefix))
             motif_table = genome_locations.compare_bedfiles(motifSearchPeaks, \
-                mFile, motif_info_file, verbal=args.verbose, \
-                bedtools_path=args.bedtools_path)
+                mFile, verbal=args.verbose)
             ### START HERE!!!
             motif_table["location"] = motif_table["chr_b"].map(str) + "_" \
                                       + motif_table["start_b"].map(str) + "_" \
@@ -712,8 +646,6 @@ if __name__ == '__main__':
                 len(motifsLoc_df.loc[:, bed_cols].drop_duplicates())
             counts_list.append("number of peaks with motif %s \t%i" \
                                % (mPrefix, peakswithmotif_count))
-            if not (args.keep_tmps):
-                os.remove(motif_info_file)
         if not (args.keep_tmps) and args.callMotifBySummit and args.narrowpeak_file:
             os.remove(motifSearchPeaks)
 
@@ -724,11 +656,8 @@ if __name__ == '__main__':
         for d_idx in range(0, len(args.dnase_files)):
             dFile = args.dnase_files[d_idx]
             dPrefix = args.dnase_names[d_idx]
-            dnase_info_file = ("%s/peaks_in_dnase_%s.txt" % (dir_name, \
-                                                             dPrefix))
             dnase_table = genome_locations.compare_bedfiles(args.bed_file, \
-                dFile, dnase_info_file, verbal=args.verbose, \
-                bedtools_path=args.bedtools_path)
+                dFile, verbal=args.verbose)
             #dnase_table_cols_needed = list(range(0, 6)) + [dnase_table.shape[1] - 1]
             #dnase_table = dnase_table.iloc[:, dnase_table_cols_needed]
             peaksInDHS = list(dnase_table["name"].unique())
@@ -759,11 +688,6 @@ if __name__ == '__main__':
             peaks_df = peaks_df.merge(peakPercOverlap_df, how="left", on=bed_cols)
             peaks_df.loc[:,newcolname] = \
             peaks_df[newcolname].fillna("False")
-            
-
-
-            if not (args.keep_tmps):
-                os.remove(dnase_info_file)
 
 
     # add mnase info to peakwise files
@@ -771,11 +695,8 @@ if __name__ == '__main__':
         for mn_idx in range(0, len(args.mnase_files)):
             mnFile = args.mnase_files[mn_idx]
             mnPrefix = args.mnase_names[mn_idx]
-            mnase_info_file = ("%s/peaks_in_mnase_%s.txt" % (dir_name, \
-                                                             mnPrefix))
             mnase_table = genome_locations.compare_bedfiles(args.bed_file, \
-                mnFile, mnase_info_file, verbal=args.verbose, \
-                bedtools_path=args.bedtools_path)
+                mnFile, verbal=args.verbose)
             mnase_table_cols_needed = range(0, 9) + [mnase_table.shape[1] - 1]
             mnase_table = mnase_table.iloc[:, mnase_table_cols_needed]
             peaksInNucleosomes = list(mnase_table["name"].unique())
@@ -786,8 +707,6 @@ if __name__ == '__main__':
                 len(mnase_table.loc[:, bed_cols].drop_duplicates())
             counts_list.append("number of peak with summits within MNAse sites (%s) \t%i" \
                                % (mnPrefix, peakswithNuc_count))
-            if not (args.keep_tmps):
-                os.remove(mnase_info_file)
 
     # ROUND 1
 
@@ -796,14 +715,14 @@ if __name__ == '__main__':
     ##		${noFilter_tss_upstream} bp upstream
     ##		${noFilter_TTS_downstream} bp downstream
     round1_peaks = round1_annotation.r1_annotate('peak',
-        gene_alist, args.gene_bedfile,
+        args.gene_alist, args.gene_bedfile,
         args.bed_file, peaks_df, args.prefix, dir_name,
         gene_alist_cols=args.gene_alist_cols,
         per_inter_filter=args.percent_inter,
         bp_upstream_filter=args.filter_tss_upstream,
         bp_downstream_filter=args.filter_tts_downstream,
         ignore_conv_peaks=args.ignore_conv_peaks,
-        bedtools_path=args.bedtools_path, verbose=args.verbose)
+        verbose=args.verbose, keep_tmps=args.keep_tmps)
 
 
     round1_peaks["distance_from_gene"] = \
@@ -824,14 +743,14 @@ if __name__ == '__main__':
     ### gene annotations will be annotated in multiple rows.
     if args.narrowpeak_file:
         round1_summits = round1_annotation.r1_annotate('summit',
-            gene_alist, args.gene_bedfile, \
+            args.gene_alist, args.gene_bedfile, \
             args.narrowpeak_file, peaks_df, args.prefix, dir_name, \
             gene_alist_cols=args.gene_alist_cols, \
             per_inter_filter=args.percent_inter, \
             bp_upstream_filter=args.filter_tss_upstream, \
             bp_downstream_filter=args.filter_tts_downstream, \
-            ignore_conv_peaks=args.ignore_conv_peaks, \
-            bedtools_path=args.bedtools_path, verbose=args.verbose)
+            ignore_conv_peaks=args.ignore_conv_peaks, 
+            verbose=args.verbose, keep_tmps=args.keep_tmps)
         round1_summits = round1_summits.loc[:, (
             bed_cols + gene_bedfile_df_cols + ["summit_start"])]
 
@@ -955,7 +874,7 @@ if __name__ == '__main__':
         de_genes_df = gene_bedfile_df[gene_bedfile_df['gene_id'].isin(all_de_genes)]
         if args.round2ann:
             round2_ann_file = ("%s/%s_r2_peak_annotations.txt" % (dir_name, args.prefix))
-            round2_peaks = round2_annotation.r2_annotate(gene_alist, de_genes_df, 
+            round2_peaks = round2_annotation.r2_annotate(args.gene_alist, de_genes_df, 
                 outlier_df, args.outlier_filter, round2_ann_file, \
                 gene_alist_cols=args.gene_alist_cols)
             round2_peaks["roundOfAnnotation"] = 2
@@ -1047,11 +966,8 @@ if __name__ == '__main__':
         for d_idx in range(0, len(args.dnase_files)):
             dFile = args.dnase_files[d_idx]
             dPrefix = args.dnase_names[d_idx]
-            dnase_info_file = ("%s/peaks_in_dnase_%s.txt" % (dir_name, \
-                                                             dPrefix))
             dnase_table = genome_locations.compare_bedfiles(args.bed_file, \
-                dFile, dnase_info_file, verbal=args.verbose, \
-                bedtools_path=args.bedtools_path)
+                dFile, verbal=args.verbose)
             dnase_table = intragenic_peaks_df.merge(dnase_table, 
                 on=bed_cols, how="left")
             
@@ -1070,11 +986,8 @@ if __name__ == '__main__':
                 on=bed_cols+['gene_id'], how='left')
 
 
-            gene_dnase_file = ("%s/peaks_in_dnase_%s.txt" % (dir_name, \
-                                                             dPrefix))
             gene_dnase_df = genome_locations.compare_bedfiles(dFile, \
-                args.gene_bedfile, gene_dnase_file, verbal=args.verbose, \
-                bedtools_path=args.bedtools_path)
+                args.gene_bedfile, verbal=args.verbose)
             gene_dnase_df['gene_overlap'] = gene_dnase_df.apply(lambda row:
                 row['overlap'] / (row['stop_b']- row['start_b']),
                 axis=1)

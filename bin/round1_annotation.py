@@ -2,45 +2,10 @@
 
 import os
 import sys
-from collections import defaultdict
 import pandas as pd
 import numpy as np
-import math
 import bin.upstream_peaks
-import subprocess
-
-# print and run bash command
-def cmd(cmd_str, verbose):
-	if verbose:
-		sys.stdout.write("%s\n" % cmd_str)
-		sys.stdout.flush()
-	os.system(cmd_str)
-
-def wc(file_name, verbose=False, samtools_path=""):
-    """count the number of lines in a file or reads in a sam/bam file"""
-    if (not os.path.isfile(file_name)):
-        sys.stdout.write("Count: 0\n")
-        sys.stdout.flush()
-        return (0)
-    else:
-        cmd = ("wc -l %s" % file_name)
-    if os.path.splitext(file_name)[1] == ".gz":
-        cmd = ("gunzip -c %s | wc -l" % file_name)
-    elif os.path.splitext(file_name)[1] == ".bam" or \
-                    os.path.splitext(file_name)[1] == ".sam" or \
-                    os.path.splitext(file_name)[1] == ".tagAlign":
-        cmd = ("%ssamtools view -F 4 -c %s" % (samtools_path, file_name))
-    if verbose:
-        sys.stdout.write("%s\n" % cmd)
-        sys.stdout.flush()
-    ps = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,
-                          stderr=subprocess.STDOUT)
-    output = ps.communicate()[0]
-    break_out = output.split()
-    if verbose:
-        sys.stdout.write("Count: %i\n" % int(break_out[0]))
-        sys.stdout.flush()
-    return int(break_out[0])
+import pybedtools
 
 
 def r1_annotate(by, gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
@@ -73,7 +38,6 @@ def r1_annotate(by, gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 	 be annotated to a gene in round 1 (default:100)
 	 * ignore_conv_peaks - do not output peak information of peaks that annotate
 	  to two different peaks (default: False)
-	 * bedtools_path - path to bedtools module
 	 * verbose - print out counts (default: False)
 	"""
 	# default keyword parameters
@@ -82,10 +46,11 @@ def r1_annotate(by, gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 	bp_upstream_filter = 3000
 	bp_downstream_filter = 0
 	ignore_conv_peaks = False
-	bedtools_path=""
 	verbose= False
+	keep_tmps = False
 	narrowPeak_boolean = False
 	region_cols = list(peaks_df.columns[:6])
+
 
 	# user-set keyword parameters
 	if ('gene_alist_cols' in keyword_parameters):
@@ -98,11 +63,10 @@ def r1_annotate(by, gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 		bp_downstream_filter = keyword_parameters['bp_downstream_filter']
 	if ('ignore_conv_peaks' in keyword_parameters):
 		ignore_conv_peaks = keyword_parameters['ignore_conv_peaks']
-	if ('bedtools_path' in keyword_parameters):
-		if len(keyword_parameters['bedtools_path']) > 0:
-			bedtools_path = keyword_parameters['bedtools_path']
 	if ('verbose' in keyword_parameters):
 		verbose = keyword_parameters['verbose']
+	if ('keep_tmps' in keyword_parameters):
+		keep_tmps = keyword_parameters['keep_tmps']
 	if 'qValue' in peaks_df.columns:
 		narrowPeak_boolean = True
 	if by == "summit":
@@ -126,6 +90,9 @@ def r1_annotate(by, gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 		region_df = peaks_df
 
 
+	# gene bed columns
+	geneBed_cols = ["gene_chr", "gene_start", "gene_stop", "gene_id", \
+		"gene_score", "gene_strand"]
 	# create a dataframe with gene alias information
 	geneAnn_df = pd.read_csv(gene_alist, sep='\t', dtype=str, index_col=False)
 	if len(gene_alist_cols)>0:
@@ -133,57 +100,57 @@ def r1_annotate(by, gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 			if not gene_ann_col in list(geneAnn_df.columns):
 				sys.exit("%s is missing a column labeled %s" % (gene_alist, gene_ann_col))
 	geneAnn_df = geneAnn_df.loc[:,['gene_id'] + gene_alist_cols]
+
+	# create a BedTool for the gene Bed file
+	geneBedTool = pybedtools.BedTool(geneBed_file)
+	# create a BedTools for the chip Bed/NarrowPeak file
+	chipBedTool = pybedtools.BedTool(bed_fname)
 	
 	
 	# STEP 0: first get closest distance of all genes
 	# this is simply to check that the peaks
 	# are close to any genes
 	if bp_upstream_filter > 0 or bp_downstream_filter > 0:
-		closestgenes_file = ("%s/%s_closest_by%s.txt" % (dir_name, prefix, by))
-		closestgenes_cmd = ("%sbedtools closest -D b -a %s -b %s > %s" % \
-			(bedtools_path, bed_fname, geneBed_file, closestgenes_file))
-		cmd(closestgenes_cmd, verbose)
-		if wc(closestgenes_file, verbose) == 0:
+		closestGenes2Peak_BedTool = chipBedTool.closest(geneBedTool,
+				s=False, D="b")
+		if len(closestGenes2Peak_BedTool) == 0:
 			sys.exit("\nAwkward!!! There are no peaks close to genes...\n"+ \
 				"Failure to pass Round 1 Annotation has closed script...")
+
+		if keep_tmps:
+			closestgenes_file = ("%s/%s_closest_by%s.tsv" % (dir_name, prefix, by))
+			closestGenes2Peak_df = closestGenes2Peak_BedTool.to_dataframe(
+				names=region_cols+geneBed_cols+["distance"])
+			closestGenes2Peak_df.to_csv(closestgenes_file, 
+				sep="\t", index=False)
 
 	# STEP 1: Collect Peaks that are INTRAGENIC
 	if verbose:
 		sys.stdout.write("Annotating INTRA genic peaks...\n")
-#	if per_inter_filter == 0:
-#		# ignore different types of the same CDS and limit to min_distance=0kb (intragenic)
-#		intragenic_peaks_df = closest_df.loc[closest_df["distance_from_gene"]==0.0,:].drop_duplicates()
-#		# add annotations found in peaks_df to intragenic peaks
-#		intragenic_peaks_df = intragenic_peaks_df.merge(peaks_df, how = 'left', on=list(peaks_df.columns[:6]))
-#		intragenic_peak_list =  list(intragenic_peaks_df['name'].unique())
-#	else:
-	bedtools_intragenic_file = ("%s/%s_intragenic_by%s.txt" % (dir_name, prefix, by))
-	intra_limit_param = ""
+
+	bedtools_intersect_param={}
 	if per_inter_filter > 0:
-		intra_limit_param = (" -F %f" % per_inter_filter)
-	bedtools_intragenic_cmd = ("%sbedtools intersect -wo%s -a %s -b %s > %s" % \
-		(bedtools_path, intra_limit_param, bed_fname, geneBed_file, bedtools_intragenic_file))
-	cmd(bedtools_intragenic_cmd, verbose)
-	genesOverlap_cols =region_cols + \
-		["gene_chr", "gene_start", "gene_stop", "gene_id", \
-		"gene_score", "gene_strand"] + ["gene_overlap"]
-	if wc(bedtools_intragenic_file, verbose) == 0:
+		bedtools_intersect_param["F"]=per_inter_filter
+	bedtoolsIntragenicBedTool = chipBedTool.intersect(
+		geneBedTool, wo=True, **bedtools_intersect_param)
+	genesOverlap_cols =region_cols + geneBed_cols + ["gene_overlap"]
+	if len(bedtoolsIntragenicBedTool) == 0:
 		if(bp_upstream_filter == 0 and bp_downstream_filter == 0):
-			sys.exit("\nAwkward!!! There are no peaks in genes...\n"+ \
+			sys.exit("\nAwkward!!! There are no peaks in genes...\n"+ 
 			"Failure to pass Round 1 Annotation has closed script...")
 		else:
-			sys.stderr.write("Warning: There are NONE intragenic peaks (within a gene).\n")
-			intragenic_peaks_df=pd.DataFrame(columns=genesOverlap_cols+["distance_from_gene"])
+			sys.stderr.write(("Warning: There are NO intragenic peaks " + 
+				"(within a gene).\n"))
+			intragenic_peaks_df=pd.DataFrame(
+				columns=genesOverlap_cols+["distance_from_gene"])
 	else:
-		
-		# get bedtools intersect output into df
-		intragenic_peaks_df = pd.read_csv(bedtools_intragenic_file, sep="\t", header=None, \
-			names=genesOverlap_cols, index_col=False, dtype={"chr" : object, \
-				"start" : np.int64, "stop" : np.int64, "name" : object, \
-				"signal" : np.float64, "strand":object, "gene_chr" : object, \
-				"gene_start" : np.int64, "gene_stop" : np.int64, \
-				"gene_id" : object, "gene_score" : np.float64, \
-				"gene_strand":object, "gene_overlap": np.float64})
+		intragenic_peaks_df = bedtoolsIntragenicBedTool.to_dataframe(
+				names=genesOverlap_cols)
+		if keep_tmps:
+			bedtools_intragenic_file = ("%s/%s_intragenic_by%s.txt" % 
+				(dir_name, prefix, by))
+			intragenic_peaks_df.to_csv(bedtools_intragenic_file, 
+				sep="\t", index=False)
 
 		intragenic_peaks_df.loc[:,"gene_overlap"] = (
 			intragenic_peaks_df.loc[:,"gene_overlap"] /

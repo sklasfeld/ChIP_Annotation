@@ -4,44 +4,25 @@ import os
 import sys
 import pandas as pd
 import numpy as np
-import subprocess
+import pybedtools
 
 
-def cmd(cmd_str, speak):
-	if speak:
-		sys.stdout.write("%s\n" % cmd_str)
-		sys.stdout.flush()
-	os.system(cmd_str)
-
-def peakoverlap(file_name):
-	"""calculate peak overlap from bed file"""
-	cmd = ("cut -f1,2,3 %s| sort -u| wc -l" % file_name)
-	ps = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,
-		stderr=subprocess.STDOUT)
-	output = ps.communicate()[0]
-	break_out = output.split()
-	return int(break_out[0])
-
-def compare_bedfiles(bedfile1, bedfile2, outfile, *positional_parameters, \
+def compare_bedfiles(bedfile1, bedfile2, *positional_parameters, \
 	**keyword_parameters):
 	"""compare two bedfiles to see if they overlap
 
 	mandatory parameters:
 	* bedfile1: bed file 
 	* bedfile2: bed file
-	* outfile: tab-delimited file containing regions that contain a 
-	minimum $distance of overlap. The last column is the number of 
-	bp that overlap.
 	
 	optional parameters:
-	* distance: Minimum number of bp must overlap (Default:2)
+	* distance: Minimum number of bp must overlap (Default:0)
 	* keep_tmps: keep temp files made in this
 	* verbal: print number of peaks that overlap (Default: False)"""
 
 	distance=0
 	verbal=False
 	keep_tmps=False
-	bedtools_path = ""
 
 	if ('distance' in keyword_parameters):
 		distance = keyword_parameters['distance']
@@ -49,16 +30,11 @@ def compare_bedfiles(bedfile1, bedfile2, outfile, *positional_parameters, \
 		verbal = keyword_parameters['verbal']
 	if ('keep_tmps' in keyword_parameters):
 		keep_tmps = keyword_parameters['keep_tmps']
-	if ('bedtools_path' in keyword_parameters):
-		bedtools_path = keyword_parameters['bedtools_path']
 
 	if not os.path.isfile(bedfile1) or os.stat(bedfile1).st_size == 0:
 		sys.exit((("\nERROR: Cannot find file: %s\n") % bedfile1))
 	if not os.path.isfile(bedfile2) or os.stat(bedfile2).st_size == 0:
 		sys.exit((("\nERROR: Cannot find file: %s\n") % bedfile1))
-
-	
-	
 
 	file1_df = pd.read_csv(bedfile1,sep='\t', header=None, dtype=str)
 	ncols_file1 = file1_df.shape[1]
@@ -86,47 +62,29 @@ def compare_bedfiles(bedfile1, bedfile2, outfile, *positional_parameters, \
 				bedfile2, chrInFile2_str))
 		sys.exit(err_msg)
 
-	tmp_intersect1="intersectbed1.tmp"
-	cmd1=("%sbedtools intersect -a %s -b %s -wo > %s" % \
-		(bedtools_path, bedfile1, bedfile2, tmp_intersect1))
-	cmd(cmd1, verbal)
-
-	# remove lines below $distance
-	cmd2=("""awk -F"\\t" '$NF>=%i' %s > %s""" % \
-		(distance, tmp_intersect1, outfile))
-	cmd(cmd2, verbal)
-
-	# move tmp file
-	if not keep_tmps:
-		cmd3=("rm %s" % tmp_intersect1)
-		cmd(cmd3, verbal)
-
-	if verbal:
-		# report number of overlap
-		sys.stdout.write("NUMBER OF PEAKS THAT OVERLAP (%s, %s): %i\n" % \
-			(bedfile1, bedfile2, peakoverlap(outfile)))
-	
+	bedTool1 = pybedtools.BedTool(bedfile1)
+	bedTool2 = pybedtools.BedTool(bedfile2)
+	intersect_bedTool = bedTool1.intersect(bedTool2, wo=True)
 
 	colsList_for_file1 = ["chr", "start", "stop", "name", "signal", "strand", \
 		"fold_change", "pValue", "qValue", "summit"]
 	colsList_for_file2 = ["chr_b", "start_b", "stop_b", "name_b", "signal_b", \
 		"strand_b", "fold_change_b", "pValue_b", "qValue_b", "summit_b"]
-	col_dtype_dict = {"chr" : object, "start" : np.int64, \
-		"stop" : np.int64, "name" : object, "signal" : np.float64, \
-		"strand":object, "fold_change": np.float64, \
-		"pValue" : np.float64, "qValue" : np.float64, \
-		"summit" : np.int64, "chr_b" : object, "start_b" : np.int64, \
-		"stop_b" : np.int64, "name_b" : object, "signal_b" : np.float64, \
-		"strand_b" : object, "fold_change_b": np.float64, \
-		"pValue_b" : np.float64, "qValue_b" : np.float64, \
-		"summit_b" : np.int64, "overlap":np.int64}
-
 	final_col_list=[]
 	final_col_list = \
 		colsList_for_file1[0:ncols_file1] + \
 		colsList_for_file2[0:ncols_file2] + ['overlap']
-	overlap_df = pd.read_csv(outfile, sep='\t', header=None, names = final_col_list, \
-			dtype=col_dtype_dict)
+	overlap_df = intersect_bedTool.to_dataframe(
+				names=final_col_list)
+	overlap_df = overlap_df.loc[overlap_df['overlap'] >= distance, :]
+
+	# report number of overlap
+	if verbal:
+		numOverlap = len(
+			overlap_df.loc[:,["chr","start","stop"]].drop_duplicates())
+		sys.stdout.write("NUMBER OF PEAKS THAT OVERLAP (%s, %s): %i\n" % \
+			(bedfile1, bedfile2, numOverlap))
+	
 	return(overlap_df)
 
 

@@ -2,7 +2,6 @@
 
 import os
 import sys
-import subprocess
 import pandas as pd
 import numpy as np
 
