@@ -8,7 +8,7 @@ import bin.upstream_peaks
 import pybedtools
 
 
-def r1_annotate(by, gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
+def r1_annotate(by, geneBed_file, bed_fname, peaks_df, prefix, \
 				dir_name, *positional_parameters, **keyword_parameters):
 	"""This function annotates genes based on the following preference order:
 	 1) Inside Genes
@@ -19,18 +19,12 @@ def r1_annotate(by, gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 	 results.)
 	 mandatory parameters:
 	 * by - annotate by "peak" or "summit"
-	 * gene_alist - A file that contains gene IDs and their aliases.
-	  The file must be tab-delimited and have atleast 1 column with the 
-	  labels "gene_id"
-	 the labe
 	 * geneBed_file - bed file with gene locations
 	 * name of bed file if annotating by peaks and narrowPeak if annoting by summits
 	 * peak_file - dataframe with all peak info
 	 * prefix - prefix for experiment
 	 * dir_name - output directory
 	 optional parameters:
-	 * gene_alist_cols - columns in `gene_alist` used to annotate the genes 
-	 (eg. gene_name)
 	 * per_inter_filter - annotates genes that overlap >= this percent of the gene
 	 * bp_upstream_filter - maximum bp distance upstream of tss that peak can 
 	 be annotated to a gene in round 1 (default:1000)
@@ -41,7 +35,6 @@ def r1_annotate(by, gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 	 * verbose - print out counts (default: False)
 	"""
 	# default keyword parameters
-	gene_alist_cols = []
 	per_inter_filter = 0
 	bp_upstream_filter = 3000
 	bp_downstream_filter = 0
@@ -53,8 +46,6 @@ def r1_annotate(by, gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 
 
 	# user-set keyword parameters
-	if ('gene_alist_cols' in keyword_parameters):
-		gene_alist_cols = keyword_parameters['gene_alist_cols']
 	if ('per_inter_filter' in keyword_parameters):
 		per_inter_filter = keyword_parameters['per_inter_filter']
 	if ('bp_upstream_filter' in keyword_parameters):
@@ -93,13 +84,6 @@ def r1_annotate(by, gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 	# gene bed columns
 	geneBed_cols = ["gene_chr", "gene_start", "gene_stop", "gene_id", \
 		"gene_score", "gene_strand"]
-	# create a dataframe with gene alias information
-	geneAnn_df = pd.read_csv(gene_alist, sep='\t', dtype=str, index_col=False)
-	if len(gene_alist_cols)>0:
-		for gene_ann_col in gene_alist_cols:
-			if not gene_ann_col in list(geneAnn_df.columns):
-				sys.exit("%s is missing a column labeled %s" % (gene_alist, gene_ann_col))
-	geneAnn_df = geneAnn_df.loc[:,['gene_id'] + gene_alist_cols]
 
 	# create a BedTool for the gene Bed file
 	geneBedTool = pybedtools.BedTool(geneBed_file)
@@ -325,44 +309,40 @@ def r1_annotate(by, gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 			if len(intragenic_peaks_df) > 0:
 				round1_frame = [intragenic_peaks_df]
 			else:
-				sys.exit("\nAwkward!!! There are no INTRAGENIC peaks annotated in round 1...\n"+ \
-			"Failure to pass Round 1 Annotation has closed script...")
+				sys.exit("\nAwkward!!! There are no INTRAGENIC peaks " + 
+					"annotated in round 1...\n"+ 
+					"Failure to pass Round 1 Annotation has closed script...")
 	#round1_df = pd.concat(round1_frame,sort=False)
 	round1_df = pd.concat(round1_frame, sort=True)
-	# add gene Alias and gene description information
-
-	round1_alias_df = round1_df.merge(geneAnn_df, how='left', on='gene_id')
 	# sort the dataframe by peak location
-	round1_alias_df["start"] = round1_alias_df["start"].astype('int64')
-	round1_alias_df.sort_values(by=["chr","start"], axis=0, ascending=True, inplace=True)
+	round1_df["start"] = round1_df["start"].astype('int64')
+	round1_df.sort_values(by=["chr","start"], axis=0, ascending=True, inplace=True)
 	# print information for each peak
 	round1_ann = ("%s/%s_r1_peak_annotations.txt" % (dir_name, prefix))
 	peaks_group_cols = peak2gene_cols[0:6]
 	## group by peak info
-	peak_groups_df = round1_alias_df.groupby(peaks_group_cols)
+	peak_groups_df = round1_df.groupby(peaks_group_cols)
 	## peak centric columns
 	peaks_centric_cols = []
 	if narrowPeak_boolean:
-		peaks_centric_cols = peaks_group_cols+["qValue"]+list(peaks_df.columns[10:])
+		peaks_centric_cols = peaks_group_cols+["qValue"] + \
+			list(peaks_df.columns[10:])
 	else:
 		peaks_centric_cols += list(peaks_df.columns[6:])
-	peak_ann_df = round1_alias_df.loc[:,peaks_group_cols]
+	peak_ann_df = round1_df.loc[:,peaks_group_cols]
 	## put columns that are not peak centric into a peak context
-	peak_nGenes_series = peak_groups_df.apply(lambda x: len(x["gene_id"].unique()))
+	peak_nGenes_series = peak_groups_df.apply(
+		lambda x: len(x["gene_id"].unique()))
 	peak_nGenes_df = peak_nGenes_series.to_frame().reset_index()
 	peak_nGenes_df.columns=peaks_group_cols+['numGenes']
-	peak_ann_df = peak_ann_df.merge(peak_nGenes_df,how='outer',on=peaks_group_cols)
-	peak_gid_series = peak_groups_df.apply(lambda x: ";".join(str(s) for s in list(x["gene_id"])))
+	peak_ann_df = peak_ann_df.merge(
+		peak_nGenes_df,how='outer',on=peaks_group_cols)
+	peak_gid_series = peak_groups_df.apply(lambda x: ";".join(
+		str(s) for s in list(x["gene_id"])))
 	peak_gid_df = peak_gid_series.to_frame().reset_index()
 	peak_gid_df.columns=peaks_group_cols+['gene_id']
 	peak_ann_df = peak_ann_df.merge(peak_gid_df,how='outer',on=peaks_group_cols)
-	if len(gene_alist_cols)>0:
-		for gene_ann_col in gene_alist_cols:
-			peak_gname_series = peak_groups_df.apply(lambda x: ";".join(str(s) for s in list(x[gene_ann_col])))
-			peak_gname_df = peak_gname_series.to_frame().reset_index()
-			peak_gname_df.columns=peaks_group_cols+[gene_ann_col]
-			peak_ann_df = peak_ann_df.merge(peak_gname_df,how='outer',on=peaks_group_cols)
-	peak2gene_info_cols = ['numGenes','gene_id'] + gene_alist_cols
+	peak2gene_info_cols = ['numGenes','gene_id']
 	column_order = peak_ann_df.columns
 	if narrowPeak_boolean:
 		column_order= peak2gene_cols[0:6] + ["qValue"] + \
@@ -374,21 +354,25 @@ def r1_annotate(by, gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 	pd.set_option('float_format', '{:.2f}'.format)
 	peak_ann_df.to_csv(round1_ann, sep="\t", index=False, na_rep="NA")
 	# get gene-centric annotation
-	gene_groups_df = round1_alias_df.groupby(peak2gene_cols[6:12])
+	gene_groups_df = round1_df.groupby(peak2gene_cols[6:12])
 	gene_nPeaks_series = gene_groups_df.apply(lambda x: x.shape[0])
 	gene_nPeaks_df = gene_nPeaks_series.to_frame().reset_index()
 	gene_nPeaks_df.columns=peak2gene_cols[6:12]+['numPeaks']
-	gene_dis_series = gene_groups_df.apply(lambda x: ";".join(str(s) for s in list(x["distance_from_gene"])))
-	gene_overlap_series = gene_groups_df.apply(lambda x: ";".join(str(s) for s in list(x["gene_overlap"])))
+	gene_dis_series = gene_groups_df.apply(lambda x: ";".join(
+		str(s) for s in list(x["distance_from_gene"])))
+	gene_overlap_series = gene_groups_df.apply(lambda x: ";".join(
+		str(s) for s in list(x["gene_overlap"])))
 	gene_dis_df = gene_dis_series.to_frame().reset_index()
 	gene_dis_df.columns=peak2gene_cols[6:12]+['distance']
 	gene_df = gene_nPeaks_df.merge(gene_dis_df,how='outer',on=peak2gene_cols[6:12])
 	if narrowPeak_boolean:
-		gene_qval_series = gene_groups_df.apply(lambda x: ";".join(str(s) for s in list(x["qValue"])))
+		gene_qval_series = gene_groups_df.apply(lambda x: ";".join(
+			str(s) for s in list(x["qValue"])))
 		gene_qval_df = gene_qval_series.to_frame().reset_index()
 		gene_qval_df.columns=peak2gene_cols[6:12]+['qValue']
 		gene_df = gene_df.merge(gene_qval_df,how='outer',on=peak2gene_cols[6:12])
-	gene_pname_series = gene_groups_df.apply(lambda x: ";".join(str(s) for s in list(x["name"])))
+	gene_pname_series = gene_groups_df.apply(lambda x: ";".join(
+		str(s) for s in list(x["name"])))
 	gene_pname_df = gene_pname_series.to_frame().reset_index()
 	gene_pname_df.columns=peak2gene_cols[6:12]+['peak_name']
 	gene_df = gene_df.merge(gene_pname_df,how='outer',on=peak2gene_cols[6:12])
@@ -397,7 +381,7 @@ def r1_annotate(by, gene_alist, geneBed_file, bed_fname, peaks_df, prefix, \
 	if verbose:
 		sys.stdout.write("Number of Unique Genes that are Annotated: %i\n" % \
 			gene_df.shape[0])
-	return (round1_alias_df)
+	return (round1_df)
 
 
 

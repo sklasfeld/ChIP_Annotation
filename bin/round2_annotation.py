@@ -3,7 +3,7 @@
 import pandas as pd
 import sys
 
-def r2_annotate(gene_alist, gene_df, peaks_df, maxdist, out, \
+def r2_annotate(gene_df, peaks_df, maxdist, out, \
 	*positional_parameters, **keyword_parameters):
 	""" calculate distance between features
 
@@ -12,15 +12,7 @@ def r2_annotate(gene_alist, gene_df, peaks_df, maxdist, out, \
 	- peaks_df: peaks dataframe to compare with
 	- maxdist: maximum distance to report, if no maximum, then input -1
 	- out: tab-delimited file with round2 annotations
-	optional parameters:
-	 * gene_alist_cols - columns in `gene_alist` used to annotate the genes 
-	 (eg. gene_name)
 	"""
-	# default keyword parameters
-	gene_alist_cols = []
-	# user-set keyword parameters
-	if ('gene_alist_cols' in keyword_parameters):
-		gene_alist_cols = keyword_parameters['gene_alist_cols']
 
 	narrowPeak_boolean = False
 	if 'qValue' in peaks_df.columns:
@@ -85,25 +77,21 @@ def r2_annotate(gene_alist, gene_df, peaks_df, maxdist, out, \
 	#round2_df = pd.concat(round2_frames, sort=False)
 	round2_df = pd.concat(round2_frames)
 
-	# add alias info about each gene
-	geneAnn_df = pd.read_csv(gene_alist, sep='\t', dtype=str)
-	round2_alias_df = round2_df.merge(geneAnn_df, how='left', \
-		on='gene_id')
 	# sort the dataframe by peak location
-	round2_alias_df.loc[:,"start"] = round2_alias_df["start"].astype('int64')
-	round2_alias_df.sort_values(by=["chr","start"], axis=0, ascending=True, inplace=True)
+	round2_df.loc[:,"start"] = round2_df["start"].astype('int64')
+	round2_df.sort_values(by=["chr","start"], axis=0, ascending=True, inplace=True)
 	# print information for each peak
 	peaks_group_cols = list(peaks_df.columns[0:6])
 	## group by peak info
 
-	peak_groups_df = round2_alias_df.groupby(peaks_group_cols)
+	peak_groups_df = round2_df.groupby(peaks_group_cols)
 	## peak centric columns
 	peaks_centric_cols = peaks_group_cols
 	if narrowPeak_boolean:
 		peaks_centric_cols = peaks_centric_cols +["qValue"]+list(peaks_df.columns[10:])
 	else:
 		peaks_centric_cols = peaks_centric_cols + list(peaks_df.columns[6:])
-	peak_ann_df = round2_alias_df.loc[:,peaks_centric_cols]
+	peak_ann_df = round2_df.loc[:,peaks_centric_cols]
 	## put columns that are not peak centric into a peak context	
 	peak_nGenes_series = peak_groups_df.apply(lambda x: len(x["gene_id"].unique()))
 	peak_nGenes_df = peak_nGenes_series.to_frame().reset_index()
@@ -113,13 +101,7 @@ def r2_annotate(gene_alist, gene_df, peaks_df, maxdist, out, \
 	peak_gid_df = peak_gid_series.to_frame().reset_index()
 	peak_gid_df.columns=peaks_group_cols+['gene_id']
 	peak_ann_df = peak_ann_df.merge(peak_gid_df,how='outer',on=peaks_group_cols)
-	if len(gene_alist_cols)>0:
-		for gene_ann_col in gene_alist_cols:
-			peak_gname_series = peak_groups_df.apply(lambda x: ";".join(str(s) for s in list(x[gene_ann_col])))
-			peak_gname_df = peak_gname_series.to_frame().reset_index()
-			peak_gname_df.columns=peaks_group_cols+[gene_ann_col]
-			peak_ann_df = peak_ann_df.merge(peak_gname_df,how='outer',on=peaks_group_cols)
-	peak2gene_info_cols = ['numGenes','gene_id'] + gene_alist_cols
+	peak2gene_info_cols = ['numGenes','gene_id']
 	column_order = peak_ann_df.columns
 	if narrowPeak_boolean:
 		column_order= list(peaks_df.columns[0:6]) + ["qValue"] + \
@@ -133,4 +115,4 @@ def r2_annotate(gene_alist, gene_df, peaks_df, maxdist, out, \
 	pd.set_option('float_format', '{:.2f}'.format)
 	peak_ann_df.to_csv(out, sep="\t", index=False, na_rep="NA")
 
-	return(round2_alias_df)
+	return(round2_df)
