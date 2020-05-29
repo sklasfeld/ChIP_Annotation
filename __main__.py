@@ -62,18 +62,10 @@ def gene_overlap_dnase(row):
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(description="This is the main script for \
-        gene annotation of ChIP peaks. This script first annotates ChIP peaks \
-        by overlapping them with other ChIP peaks, DNase, MNase, or motifs. \
-        Then it annotate the peaks to genes. The first round annotates \
-        peaks by location relative to genes. Priority is given to intragenic \
-        peaks (limited by `percent_inter`) and then peaks upstream of genes \
-        (limited by `filter_tss_upstream`) and then peaks downstream of genes \
-        (limited by `filter_tts_downstream`). The second round is \
-        dependent on genes that were found to be significantly differentially \
-        expressed (DE). In round 2, peaks are annotated to upstream or \
-        downstream DE genes (limited by `outlier_filter`). Last, text files \
-        are output that are contain peak-centric and gene-centric annotations")
+    parser = argparse.ArgumentParser(description="At its core the purpose of \
+        this code is to annotate ChIP peak regions to genes. \
+        Other parameters allow for users to annotate both the peaks and the \
+        genes further with external datasets.")
     parser.add_argument('prefix', help='prefix for output file(eg. LFY)')
     parser.add_argument('dir_name', help='directory where output will go')
     parser.add_argument('bed_file', help='bed file containing ChIP peaks. \
@@ -129,6 +121,26 @@ if __name__ == '__main__':
         of each column).', choices=["chrom", "chromStart", "chromEnd", "name", \
         "score", "strand", \
         "singalValue", "pValue", "qValue", "peak"])
+    parser.add_argument('-sb', '--compareSumRegToBed', nargs='*', 
+        help='list of bed files that you want to compare with the region \
+        around the ChIP summit site. Note that for this function to work, \
+        the following other parameters must also be set correctly: \
+        `narrowpeak_file`, `compareSumRegToBedColNames`, and \
+        `summitRegion`', required=False)
+    parser.add_argument('-sbn', '--compareSumRegToBedColNames', nargs='*', 
+        help='list of column names for the output of the comparison \
+        between the features in the bed file(s) in `compareSumRegToBed` \
+        and the ChIP summit regions (eg.LFY1_motif)', required=False, default=[])
+    parser.add_argument('-sbr', '--summitRegion', nargs='*', type=np.int64, 
+        help='To run `compareSumRegToBed` the user must set the \
+        boundaries around the peak summit to compare to. The specific \
+        format for this parameter is: \
+        `[compareSumRegToBedColNames],[bp_upstream],[bp_downstream]`.  \
+        For example, if you want to compare a motif bed file \
+        (given the column name "LFY1_motif") to -50/+100 bp from the summit \
+        and a bed file with MNase nucleosome (given the column name \
+        "High_MNase") to the actual summit site you would set \
+        `--summitRegion LFY1_motif,50,100 High_MNase,0,0`')
     parser.add_argument('-pt', '--comparePeaksToText', nargs='*', help='list of \
         files that contain tables with headers. To compare peakwise the table must \
         include at least the following columns: chrom, start, stop', \
@@ -175,31 +187,12 @@ if __name__ == '__main__':
         "RPM:sample1", "RPM:sample2", "Sample1vsSample2_DE" (which gives the \
         gene-match), "Sample1vsSample2_DE:logFC", and \
         "Sample1vsSample2_DE:adjp"', required=False, default=[], nargs='*')
-    parser.add_argument('-mf', '--motifFiles', nargs='*', help='list of bed \
-        files with locations of TF motifs. WARNING: each row in the bed files \
-        must have a unique name in the 4th column.', required=False)
-    parser.add_argument('-mn', '--motifNames', nargs='*', help='list giving \
-        names of the type of motifs given in each bed file in --motifFiles. \
-        This list must be of equal length to the "motifFiles" variable \
-        (eg.LFY1)', required=False, default=[])
-    parser.add_argument('-ms', '--callMotifBySummit', nargs=2, type=np.int64, 
-        help='If `narrowpeak_file` is defined, then call the \
-        presence of motifs by using $D bp downstream and $U bp upstream of the \
-        summit rather than the peak region. For example to use -100/+250 bp \
-        from the summit you would set `--callMotifBySummit 100 250`')
     parser.add_argument('-df', '--dnase_files', nargs='*', help='list of bed \
         files with locations of DNase Hypersensitivity sites', required=False)
     parser.add_argument('-dn', '--dnase_names', nargs='*', help='list giving \
         names for each DNAse experiment corresponding to DNAse bed files in \
         --dnase_files. This list must be of equal length to the "dnase_files" \
         variable (eg.DNAse_flowers)', required=False, default=[])
-    parser.add_argument('-nf', '--mnase_files', nargs='*', help='list of bed \
-    files with locations of nucleosome binding sites (via MNase)', \
-    required=False)
-    parser.add_argument('-nn', '--mnase_names', nargs='*', help='list giving \
-        names for each MNase experiment corresponding to MNase bed files in \
-        --mnase_files. This list must be of equal length to the "mnase_files" \
-        variable (eg.HighMock)',required=False, default=[])
     parser.add_argument('-idr', '--globalIDRpval', help='global IDR pvalue \
         used on to get this output', default="")
     parser.add_argument('--keep_tmps', help='keep temp files', \
@@ -261,14 +254,31 @@ if __name__ == '__main__':
             colList = prefixNCols[1].split(",")
             addGeneToTextFeatures_dic[prefixNCols[0]]=colList
 
-
-    if args.motifFiles or args.motifNames:
-        if len(args.motifFiles) != len(args.motifNames):
-            err_msg = "motifFiles and motifNames must be of equal length!"
-            err_msg = ("%s\nmotifFiles length = %i" % (err_msg, \
-                len(args.motifFiles)))
-            err_msg = ("%s\nmotifNames length = %i\n" % (err_msg, \
-                len(args.motifNames)))
+    if args.compareSumRegToBed and not args.narrowpeak_file:
+        err_msg = ("ERROR: A narrowPeak file must be set in the " +
+            "`narrowpeak_file` parameter to perform the " + 
+            "`compareSumRegToBed` function. Currently it is not set.")
+    if args.compareSumRegToBed and not args.summitRegion:
+        err_msg = ("ERROR: To perform the `compareSumRegToBed` function, " +
+            "the user must set the `summitRegion` parameter. Currently " +
+            "it is not set")
+    if args.compareSumRegToBed or args.compareSumRegToBedColNames:
+        if len(args.compareSumRegToBed) != len(args.compareSumRegToBedColNames):
+            err_msg = (("ERROR: Parameters `compareSumRegToBed` and " + 
+                "`compareSumRegToBedColNames` must be of equal length!\n" +
+                "compareSumRegToBed length = %i\n" +
+                "compareSumRegToBedColNames length = %i\n") % 
+                (len(args.compareSumRegToBed),
+                len(args.compareSumRegToBedColNames)))
+            sys.exit(err_msg)
+    if args.compareSumRegToBed or args.summitRegion:
+        if len(args.compareSumRegToBed) != len(args.summitRegion):
+            err_msg = (("ERROR: Parameters `compareSumRegToBed` and " + 
+                "`summitRegion` must be of equal length!\n" +
+                "compareSumRegToBed length = %i\n" +
+                "summitRegion length = %i\n") % 
+                (len(args.compareSumRegToBed),
+                len(args.summitRegion)))
             sys.exit(err_msg)
     if args.dnase_files or args.dnase_names:
         if len(args.dnase_files) != len(args.dnase_names):
@@ -278,14 +288,29 @@ if __name__ == '__main__':
             err_msg = ("%s\ndnase_names length = %i\n" % (err_msg, \
                 len(args.dnase_names)))
             sys.exit(err_msg)
-    if args.mnase_files or args.mnase_names:
-        if len(args.mnase_files) != len(args.mnase_names):
-            err_msg = "mnase_files and mnase_names must be of equal length!"
-            err_msg = ("%smnase_files length = %i" % (err_msg, \
-                len(args.mnase_files)))
-            err_msg = ("%smnase_names length = %i\n" % (err_msg, \
-                len(args.mnase_names)))
-            sys.exit(err_msg)
+    summit_region_downstream={}
+    summit_region_upstream={}
+    if args.summitRegion:
+        for sr in args.summitRegion:
+            sr_err = (("ERROR: In correct format for parameter " +
+                "`summitRegion`. %s is written in correctly. " +
+                "The specific format for this parameter is: " + 
+                "`[compareSumRegToBedColNames],[bp_upstream],[bp_downstream]`. " +
+                "For example, if you want to compare a motif bed file " +
+                "(given the column name "LFY1_motif") to -50/+100 bp from " + 
+                "the summit and a bed file with MNase nucleosome " + 
+                "(given the column name "High_MNase") to the actual " + 
+                "summit site you would set " + 
+                "`--summitRegion LFY1_motif,50,100 High_MNase,0,0`")
+                % (sr))
+            if not sr.find(","):
+                sys.exit(sr_err)
+            summitRegArgList = sr.split(",")
+            if len(summitRegArgList) != 3:
+                sys.exit(sr_err)
+            summit_region_downstream[summitRegArgList[0]]=summitRegArgList[1]
+            summit_region_upstream[summitRegArgList[0]]=summitRegArgList[1]
+
 
     dir_name = os.path.abspath(args.dir_name)
 
@@ -489,45 +514,47 @@ if __name__ == '__main__':
                            (overlap_all_counts))
 
 
-    # add motif info to peakwise files
-    if args.motifFiles:
-        motifSearchPeaks=""
-        if args.callMotifBySummit and args.narrowpeak_file:
-                bp_downstream_of_summit=args.callMotifBySummit[0]
-                bp_upstream_of_summit=args.callMotifBySummit[1]
-                motifSearchPeaks = ("%s/%s_summitPlus%iMinus%i.txt" % (dir_name, \
-                    args.prefix, bp_downstream_of_summit, bp_upstream_of_summit))
-                summit_df = peaks_df.copy()
-                summit_df["start"]=peaks_df["start"] + peaks_df["summit"] - bp_downstream_of_summit
-                summit_df["stop"]=peaks_df["start"] + peaks_df["summit"] + bp_upstream_of_summit
-                summit_df = summit_df.loc[:,bed_cols]
-                summit_df.to_csv(motifSearchPeaks, sep="\t", header=False, \
-                    index=False)
-        else:
-            motifSearchPeaks=args.bed_file
+    # compare bed files to summit region
+    # summitRegion, compareSumRegToBed, compareSumRegToBedColNames
+    if args.compareSumRegToBed:
+        
 
-        for m_idx in range(0, len(args.motifFiles)):
-            mFile = args.motifFiles[m_idx]
-            mPrefix = args.motifNames[m_idx]
-            motif_table = genome_locations.compare_bedfiles(motifSearchPeaks, \
+        for m_idx in range(0, len(args.compareSumRegToBed)):
+            mFile = args.compareSumRegToBed[m_idx]
+            mPrefix = args.compareSumRegToBedColNames[m_idx]
+
+            # set the summit region
+            bp_downstream_of_summit=summit_region_downstream[mPrefix]
+            bp_upstream_of_summit=summit_region_upstream[mPrefix]
+
+            # create a bed file with each feature being a summit region
+            summitRegionBedFile = ("%s/%s_summitPlus%iMinus%i.txt" % (dir_name, \
+                args.prefix, bp_downstream_of_summit, bp_upstream_of_summit))
+            summit_df = peaks_df.copy()
+            summit_df["start"]=(peaks_df["start"] + 
+                peaks_df["summit"] - bp_downstream_of_summit)
+            summit_df["stop"]=(peaks_df["start"] + 
+                peaks_df["summit"] + bp_upstream_of_summit + 1)
+            summit_df = summit_df.loc[:,bed_cols]
+            summit_df.to_csv(summitRegionBedFile, sep="\t", header=False, \
+                index=False)
+
+
+            bedtools_table = genome_locations.compare_bedfiles(summitRegionBedFile, \
                 mFile, verbal=args.verbose)
-            ### START HERE!!!
-            motif_table["location"] = motif_table["chr_b"].map(str) + "_" \
-                                      + motif_table["start_b"].map(str) + "_" \
-                                      + motif_table["stop_b"].map(str)
-            motifsInPeak_df = motif_table.groupby(bed_cols)
-            motifsLoc_series = motifsInPeak_df.apply( \
+
+            bedtools_table["location"] = bedtools_table["chr_b"].map(str) + "_" \
+                                      + bedtools_table["start_b"].map(str) + "_" \
+                                      + bedtools_table["stop_b"].map(str)
+            featuresInSummitRegion_df = bedtools_table.groupby(bed_cols)
+            bedLoc_series = featuresInSummitRegion_df.apply( \
                 lambda x: ";".join(str(s) for s in list(x["location"])))
-            motifsLoc_df = motifsLoc_series.to_frame().reset_index()
-            motifsLoc_df = motifsLoc_df.rename(columns={0: (mPrefix)})
-            motifsLoc_df = motifsLoc_df.loc[:,["name", mPrefix]]
-            peaks_df = peaks_df.merge(motifsLoc_df, how="left", on="name")
-            peakswithmotif_count = \
-                len(motifsLoc_df.loc[:, bed_cols].drop_duplicates())
-            counts_list.append("number of peaks with motif %s \t%i" \
-                               % (mPrefix, peakswithmotif_count))
-        if not (args.keep_tmps) and args.callMotifBySummit and args.narrowpeak_file:
-            os.remove(motifSearchPeaks)
+            bedLoc_df = bedLoc_series.to_frame().reset_index()
+            bedLoc_df = bedLoc_df.rename(columns={0: (mPrefix)})
+            bedLoc_df = bedLoc_df.loc[:,["name", mPrefix]]
+            peaks_df = peaks_df.merge(bedLoc_df, how="left", on="name")
+            if not args.keep_tmps:
+                os.remove(summitRegionBedFile)
 
 
     # add dnase info to peakwise files
@@ -549,7 +576,7 @@ if __name__ == '__main__':
             counts_list.append("number of peaks within DNAse sites (%s) \t%i" \
                                % (dPrefix, peakswithDHS_count))
             
-            # count what percent of the DNAse region overlaps the peak
+            # count what percent of the peak contains DNAse regions
             dnase_table.astype(
                 {'start':np.float64,
                 'stop':np.float64,
@@ -559,7 +586,7 @@ if __name__ == '__main__':
                     dnase_table["stop"] - dnase_table["start"])
             dnase_table_grouped =dnase_table.groupby(bed_cols)
             peakPercOverlap_series = dnase_table_grouped.apply( \
-                lambda x: ";".join(str(s) for s in list(x["percOverlap"])))
+                lambda x: x["percOverlap"].sum())
             peakPercOverlap_df = peakPercOverlap_series.to_frame().reset_index()
             newcolname=(("%s:percentDNAseOverlapsPeak") % (dPrefix))
             dnase_peakwise_colnames.append(newcolname)
@@ -568,25 +595,6 @@ if __name__ == '__main__':
             peaks_df = peaks_df.merge(peakPercOverlap_df, how="left", on=bed_cols)
             peaks_df.loc[:,newcolname] = \
             peaks_df[newcolname].fillna("False")
-
-
-    # add mnase info to peakwise files
-    if args.mnase_files:
-        for mn_idx in range(0, len(args.mnase_files)):
-            mnFile = args.mnase_files[mn_idx]
-            mnPrefix = args.mnase_names[mn_idx]
-            mnase_table = genome_locations.compare_bedfiles(args.bed_file, \
-                mnFile, verbal=args.verbose)
-            mnase_table_cols_needed = range(0, 9) + [mnase_table.shape[1] - 1]
-            mnase_table = mnase_table.iloc[:, mnase_table_cols_needed]
-            peaksInNucleosomes = list(mnase_table["name"].unique())
-            peaks_df.loc[:, mnPrefix] = peaks_df.apply( \
-                lambda row: row["name"] in peaksInNucleosomes, axis=1)
-            peaks_df.loc[:,mnPrefix].fillna(False, inplace=True)
-            peakswithNuc_count = \
-                len(mnase_table.loc[:, bed_cols].drop_duplicates())
-            counts_list.append("number of peak with summits within MNAse sites (%s) \t%i" \
-                               % (mnPrefix, peakswithNuc_count))
 
     # ROUND 1
 
@@ -790,7 +798,7 @@ if __name__ == '__main__':
     all_peaks_col_order = all_peaks_col_order + \
             ['gene_overlap', 'distance_from_gene'] + \
             comparePeaksToBeds_colnames + comparePeaksToText_colnames + \
-            args.motifNames + dnase_peakwise_colnames + args.mnase_names
+            args.compareSumRegToBedColNames + dnase_peakwise_colnames
     
 
     all_peaks_df = all_peaks_df.loc[:, all_peaks_col_order]
@@ -818,7 +826,6 @@ if __name__ == '__main__':
     # list what percentage of the gene does the DNAse region
     # overlap
     dnase_genewise_cols=[]
-    dnase_peakAndGenewise_cols=[]
     if args.dnase_files:
         intragenic_peaks_df = all_peaks_df.loc[(
             all_peaks_df['distance_from_gene']==0),bed_cols+['gene_id']].copy()
@@ -829,36 +836,21 @@ if __name__ == '__main__':
         for d_idx in range(0, len(args.dnase_files)):
             dFile = args.dnase_files[d_idx]
             dPrefix = args.dnase_names[d_idx]
-            dnase_table = genome_locations.compare_bedfiles(args.bed_file, \
-                dFile, verbal=args.verbose)
-            dnase_table = intragenic_peaks_df.merge(dnase_table, 
-                on=bed_cols, how="left")
-            
-            dnase_table['gene_overlap'] = dnase_table.apply(
-                lambda x: gene_overlap_dnase(x), 
-                axis=1).astype(np.float64)
-            dnase_table['perc_gene_overlap'] = dnase_table.apply( lambda row: 
-                row['gene_overlap'] / (row['gene_stop']- row['gene_start']),
-                axis=1)
-            dnase_table = dnase_table.loc[:,bed_cols+['gene_id','perc_gene_overlap']].copy()
-            newcolname=(("%s:IntraGeneOverlap") % (dPrefix))
-            dnase_peakAndGenewise_cols.append(newcolname)
-            dnase_table = dnase_table.rename(index=str, 
-                columns={"perc_gene_overlap": newcolname})
-            all_peaks_df = all_peaks_df.merge(dnase_table, 
-                on=bed_cols+['gene_id'], how='left')
-
-
             gene_dnase_df = genome_locations.compare_bedfiles(dFile, \
                 args.gene_bedfile, verbal=args.verbose)
             gene_dnase_df['gene_overlap'] = gene_dnase_df.apply(lambda row:
                 row['overlap'] / (row['stop_b']- row['start_b']),
                 axis=1)
             gene_dnase_df = gene_dnase_df.loc[:,['name_b','gene_overlap']]
+            gene_dnase_grouped =gene_dnase_df.groupby("name_b")
+            genePercOverlap_series = gene_dnase_grouped.apply( \
+                lambda x: x["gene_overlap"].sum())
+            genePercOverlap_df = genePercOverlap_series.to_frame().reset_index()
+
             newcolname=(("%s:percentDNAseInGene") % (dPrefix))
             dnase_genewise_cols.append(newcolname)
-            gene_dnase_df.columns = ["gene_id",newcolname]
-            all_peaks_df = all_peaks_df.merge(gene_dnase_df, 
+            genePercOverlap_df.columns = ["gene_id",newcolname]
+            all_peaks_df = all_peaks_df.merge(genePercOverlap_df, 
                 on=['gene_id'], how='left')
             
 
@@ -923,7 +915,7 @@ if __name__ == '__main__':
     peak_group_cols = peak_group_cols + \
                       comparePeaksToBeds_colnames + \
                       comparePeaksToText_colnames + \
-                      args.motifNames + \
+                      args.compareSumRegToBedColNames + \
                       dnase_peakwise_colnames + \
                       args.mnase_names
     
@@ -975,7 +967,7 @@ if __name__ == '__main__':
     ## if applicable, list percentage that DNAse (which overlaps with
     ## intragenic peak) overlaps gene
     if args.dnase_files:
-        for dnase_pg_col in dnase_peakAndGenewise_cols + dnase_genewise_cols:
+        for dnase_pg_col in dnase_genewise_cols:
             peak_dnase2Gene_series = peak_grouped_df.apply(lambda x: ";".join(
                 str(s) for s in list(x[dnase_pg_col].unique())))
             peak_dnase2Gene_df = peak_dnase2Gene_series.to_frame().reset_index()
@@ -1003,9 +995,8 @@ if __name__ == '__main__':
     peak2gene_info_cols = ['numGenes', 'gene_id'] + \
         ['gene_overlap', 'distance_from_gene', 'summit_ann']
     peak_col_order = peak_group_cols[0:7] + peak2gene_info_cols + \
-        dnase_genewise_cols + peak_group_cols[7:] + \
-        addGeneToTextFeatures_cols \
-        + dnase_peakAndGenewise_cols
+        peak_group_cols[7:] + dnase_genewise_cols + \
+        addGeneToTextFeatures_cols 
 
     peak_ann_df = peak_ann_df.loc[:, peak_col_order]
     pd.set_option('float_format', '{:.2f}'.format)
@@ -1024,8 +1015,7 @@ if __name__ == '__main__':
         dnase_genewise_cols + \
         addGeneToTextFeatures_cols
     all_ann_peaks = all_peaks_df.loc[all_peaks_df["gene_id"].notnull(),:].copy()
-    geneCentricColsOnly_df = all_ann_peaks.loc[:,gene_group_cols].copy()
-    
+    geneCentricColsOnly_df = all_ann_peaks.loc[:,gene_group_cols].drop_duplicates()
 
     gene_groups_df = all_ann_peaks.groupby("gene_id")
     ## list number of genes that annotate to peak
@@ -1094,20 +1084,20 @@ if __name__ == '__main__':
                                             on='gene_id')
             gene_ann_df.loc[:,peak_sample].fillna(False, inplace=True)
             
-    ## list True if any of the peaks that the gene is annotated to is found in a
-    ## a motif (motifFiles)
-    if args.motifFiles:
-        for motif_col in args.motifNames:
-            gene_motif_series = gene_groups_df.apply(lambda x: x[motif_col].notnull().any())
-            gene_motif_df = gene_motif_series.to_frame().reset_index()
-            gene_motif_df.columns = ['gene_id', motif_col]
-            gene_ann_df = gene_ann_df.merge(gene_motif_df, how='left', \
+    ## list True if any of the peaks that the gene is annotated to 
+    ## contains a feature in their summit region (compareSumRegToBed)
+    if args.compareSumRegToBed:
+        for sumRegion_col in args.compareSumRegToBedColNames:
+            gene_sumRegion_series = gene_groups_df.apply(lambda x: x[sumRegion_col].notnull().any())
+            gene_sumRegion_df = gene_sumRegion_series.to_frame().reset_index()
+            gene_sumRegion_df.columns = ['gene_id', sumRegion_col]
+            gene_ann_df = gene_ann_df.merge(gene_sumRegion_df, how='left', \
                                             on='gene_id')
-            gene_ann_df.loc[:,motif_col].fillna("NA", inplace=True)
+            gene_ann_df.loc[:,sumRegion_col].fillna("NA", inplace=True)
     ## list True if any of the peaks that the gene is annotated to is found in a
     ## a DHS (dnase_files)
     if args.dnase_files:
-        for dhs_col in dnase_peakwise_colnames + dnase_peakAndGenewise_cols:
+        for dhs_col in dnase_peakwise_colnames:
             if dhs_col in args.dnase_names:
                 gene_dhs_series = gene_groups_df.apply(lambda x: x[dhs_col].any())
             else:
@@ -1118,16 +1108,6 @@ if __name__ == '__main__':
             gene_ann_df = gene_ann_df.merge(gene_dhs_df, how='left', \
                                             on='gene_id')
             gene_ann_df.loc[:,dhs_col].fillna(False, inplace=True)
-    ## list True if any of the peaks that the gene is annotated to is found in a
-    ## a nucleosome (mnase_files)
-    if args.mnase_files:
-        for mnase_samp in args.mnase_names:
-            gene_mnase_series = gene_groups_df.apply(lambda x: x[mnase_samp].any())
-            gene_mnase_df = gene_mnase_series.to_frame().reset_index()
-            gene_mnase_df.columns = ['gene_id', mnase_samp]
-            gene_ann_df = gene_ann_df.merge(gene_mnase_df, how='left', \
-                                            on='gene_id')
-            gene_ann_df.loc[:,mnase_samp].fillna(False, inplace=True)
 
     gene_ann_df = geneCentricColsOnly_df.merge(gene_ann_df, how='left', on='gene_id')
     gene_out_tsv = ("%s/%s_genewise_ann.tsv" % (dir_name, args.prefix))
