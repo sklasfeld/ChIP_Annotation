@@ -55,3 +55,9 @@ Given specific set parameters, this script outputs extra columns to further anno
 	* **dnase-peak overlap** (peakwise): True/False whether the DNase regions overlap in column named by `dnase_name` 
 	* **dnase-peak percent overlap** (peakwise):  The percentage of the ChIP peak that is overlapping with DNase region(s). Columns are named by "`dnase_name`:percentDNAseOverlapsPeak".
 	* **dnase-gene percent overlap** (genewise):  The percentage of the gene that is overlapping with DNase region(s).
+
+## Future Updates
+In the future, we plan to add the following function/parameter(s) to this script:
+* when comparing overlapping chip peak to bed features, there should be a way to report the bed features locations rather than just True when the bed feature(s) overlaps the peak
+* when  comparing overlapping chip summit regions to bed features, there should be a way to report just True rather than the bed features locations when the bed feature(s) overlaps the summit region
+* when  comparing overlapping chip summit regions to bed features, there should be a way to report more than the bed features locations of the bed feature(s) that overlaps the summit region (eg. the feature name given in the 4th column of the bed file)
