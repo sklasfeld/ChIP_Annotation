@@ -21,15 +21,25 @@ def r2_annotate(gene_df, peaks_df, maxdist, out, \
 	peaks_chrs_list = list(peaks_df["chr"].unique())
 	genes_chrs_list = list(gene_df["gene_chr"].unique())
 	inFile1Not2 = [x for x in peaks_chrs_list if x not in genes_chrs_list]
-	if len(inFile1Not2) > 0:
+	inFile1and2 = [x for x in peaks_chrs_list if x in genes_chrs_list]
+	if len(inFile1and2) == 0 or len(inFile1Not2) > 0:
 		chrInFile1_str = ",".join(peaks_chrs_list)
 		chrInFile2_str = ",".join(genes_chrs_list)
-		err_msg = (("The chromosomes columns in the narrowPeak file do not " + \
-			" match the chromosomes in the gene file.\nThe " + \
-			"chromosomes in the bed file are %s.\n" + \
-			"The chromosome in gene file are %s") % \
-		( chrInFile1_str, chrInFile2_str))
-		sys.exit(err_msg)
+		if len(inFile1and2) == 0:
+			err_msg = (("ERROR: NONE of the chromosomes columns in " + 
+				"the narrowPeak file do not match the chromosomes " + 
+				"in the gene file.\nThe chromosomes in the bed " + 
+				"file are: %s.\nThe chromosome in gene file are: %s.") % \
+			( chrInFile1_str, chrInFile2_str))
+			sys.exit(err_msg)
+		else:
+			err_msg = (("WARNING: The chromosomes columns in the narrowPeak file " + \
+				" do not match the chromosomes in the gene file. The " + \
+				"chromosomes in the bed file are: %s. " + \
+				"The chromosome in gene file are: %s.") % \
+			( chrInFile1_str, chrInFile2_str))
+			sys.stderr.write(err_msg)
+
 
 	peaks2genes_df = peaks_df.merge(gene_df, left_on="chr", right_on="gene_chr")
 	

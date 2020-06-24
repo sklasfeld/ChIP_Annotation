@@ -58,6 +58,8 @@ Given specific set parameters, this script outputs extra columns to further anno
 
 ## Future Updates
 In the future, we plan to add the following function/parameter(s) to this script:
+* Instead of requiring the peaks be in the 6-column BED format, the script should allow broad/narrowPeak format.
+* If the output directory does not exist then the script should create a new path.
 * when comparing overlapping chip peak to bed features, there should be a way to report the bed features locations rather than just True when the bed feature(s) overlaps the peak
 * when  comparing overlapping chip summit regions to bed features, there should be a way to report just True rather than the bed features locations when the bed feature(s) overlaps the summit region
 * when  comparing overlapping chip summit regions to bed features, there should be a way to report more than the bed features locations of the bed feature(s) that overlaps the summit region (eg. the feature name given in the 4th column of the bed file)

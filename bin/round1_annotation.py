@@ -169,7 +169,6 @@ def r1_annotate(by, geneBed_file, bed_fname, peaks_df, prefix, \
 			intergenic_peaks_df = intergenic_peaks_df.loc[ \
 				intergenic_peaks_df["_merge"]=="left_only", :]
 			intergenic_peaks_df = intergenic_peaks_df.loc[:, list(region_df.columns)]
-			#intergenic_peaks_df = intergenic_peaks_df.drop(["_merge"], axis=1)
 		else:
 			intergenic_peaks_df = region_df.merge(intragenic_peaks_df,
 				left_on=['chr', 'start', 'name', 'signal', 'strand'],
@@ -181,7 +180,6 @@ def r1_annotate(by, geneBed_file, bed_fname, peaks_df, prefix, \
 				columns = {"start_x":"start", "stop_x":"stop"})
 			intergenic_peaks_df = intergenic_peaks_df.loc[:, list(region_df.columns)]
 		# first ignore peaks downstream (-id) of genes since upstream is preferred
-		upsteamgenes_file = ("%s/%s_closest_by%s_id.txt" % (dir_name, prefix,by))
 		upstream_peaks_df = pd.DataFrame()
 		#if not os.path.isfile(upsteamgenes_file):
 		if ignore_conv_peaks:

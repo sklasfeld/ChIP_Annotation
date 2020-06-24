@@ -292,16 +292,16 @@ if __name__ == '__main__':
     summit_region_upstream={}
     if args.summitRegion:
         for sr in args.summitRegion:
-            sr_err = (("ERROR: In correct format for parameter " +
-                "`summitRegion`. %s is written in correctly. " +
-                "The specific format for this parameter is: " + 
-                "`[compareSumRegToBedColNames],[bp_upstream],[bp_downstream]`. " +
-                "For example, if you want to compare a motif bed file " +
-                "(given the column name "LFY1_motif") to -50/+100 bp from " + 
-                "the summit and a bed file with MNase nucleosome " + 
-                "(given the column name "High_MNase") to the actual " + 
-                "summit site you would set " + 
-                "`--summitRegion LFY1_motif,50,100 High_MNase,0,0`")
+            sr_err = (('ERROR: In correct format for parameter ' +
+                '`summitRegion`. %s is written in correctly. ' +
+                'The specific format for this parameter is: ' + 
+                '`[compareSumRegToBedColNames],[bp_upstream],[bp_downstream]`. ' +
+                'For example, if you want to compare a motif bed file ' +
+                '(given the column name "LFY1_motif") to -50/+100 bp from ' + 
+                'the summit and a bed file with MNase nucleosome ' + 
+                '(given the column name "High_MNase") to the actual ' + 
+                'summit site you would set ' + 
+                '`--summitRegion LFY1_motif,50,100 High_MNase,0,0`')
                 % (sr))
             if not sr.find(","):
                 sys.exit(sr_err)
@@ -322,9 +322,12 @@ if __name__ == '__main__':
     gene_bedfile_df_cols = ["gene_chr", "gene_start", "gene_stop", \
         "gene_id", "gene_score", "gene_strand"]
     gene_bedfile_df = pd.read_csv(args.gene_bedfile, sep='\t', header=None, \
-        names=gene_bedfile_df_cols, dtype={"gene_chr" : object, \
+        names=gene_bedfile_df_cols)
+    gene_bedfile_types={"gene_chr" : object, \
         "gene_start" : np.int64, "gene_stop" : np.int64, "gene_id" : object, \
-        "gene_score" : np.float64, "gene_strand":object})
+        "gene_score" : np.float64, "gene_strand":object}
+    gene_bedfile_df.loc[gene_bedfile_df["gene_score"]==".","gene_score"]=0
+    gene_bedfile_df = gene_bedfile_df.astype(gene_bedfile_types)
 
     # roundOfAnnotation = {} # roundOfAnnotation[peak_name] = round_annotated
     # 1 = round 1 ()
@@ -610,8 +613,6 @@ if __name__ == '__main__':
         bp_downstream_filter=args.filter_tts_downstream,
         ignore_conv_peaks=args.ignore_conv_peaks,
         verbose=args.verbose, keep_tmps=args.keep_tmps)
-
-
     round1_peaks["distance_from_gene"] = \
         round1_peaks["distance_from_gene"].astype('float64')
     count_intragenic_genes = len( \
@@ -916,8 +917,7 @@ if __name__ == '__main__':
                       comparePeaksToBeds_colnames + \
                       comparePeaksToText_colnames + \
                       args.compareSumRegToBedColNames + \
-                      dnase_peakwise_colnames + \
-                      args.mnase_names
+                      dnase_peakwise_colnames
     
     ## note: non-peak_centric columns = gene_id, summit_ann, 
     # Alias, distance_from_gene

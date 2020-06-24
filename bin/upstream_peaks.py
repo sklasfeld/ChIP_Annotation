@@ -66,6 +66,7 @@ def annotate(prefix, intergenic_peaks_df, gene_file, maximum_bp, outdir, \
     convergent_peaks_arr = []
     upstream_pGroups = upstream_df.groupby(list(upstream_df.columns[0:6]))
     for p_info, p_group in upstream_pGroups:
+        
         if p_group.shape[0] == 1:
             upstream_filtered_arr.append(p_group)
         else:
@@ -91,7 +92,6 @@ def annotate(prefix, intergenic_peaks_df, gene_file, maximum_bp, outdir, \
                 if not ignore_conv_peaks:
                     upstream_filtered_arr.append(closest_gene_df)
     upstream_filtered_df = pd.DataFrame(columns=upstream_df.columns)
-    #dtype=upstream_df.dtypes.to_dict()
     
     if len(upstream_filtered_arr) > 0:
         upstream_filtered_df = pd.concat(upstream_filtered_arr)
