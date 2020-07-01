@@ -106,6 +106,9 @@ if args.change_right_cols and args.colnames_r:
 	sys.exit("Error: Can only set one of these parameters:\n" +
 		"\t* change_right_cols\n"+
 		"\t* colnames_r\n")
+if not args.on:
+	if not args.left_on and not args.right_on:
+		sys.exit("Error: must set columns to join on.")
 
 # 1. Read input files
 read_ltable_param={}
@@ -152,6 +155,8 @@ if args.change_right_cols:
 				"be in the format [old_col_name],[new_column_name]")
 	rename_right_cols = dict(x.split(",") for x in args.change_right_cols)
 	right_df = right_df.rename(columns=rename_right_cols)
+
+
 
 
 
