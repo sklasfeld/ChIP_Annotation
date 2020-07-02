@@ -87,42 +87,43 @@ def r2_annotate(gene_df, peaks_df, maxdist, out, \
 	#round2_df = pd.concat(round2_frames, sort=False)
 	round2_df = pd.concat(round2_frames)
 
-	# sort the dataframe by peak location
-	round2_df.loc[:,"start"] = round2_df["start"].astype('int64')
-	round2_df.sort_values(by=["chr","start"], axis=0, ascending=True, inplace=True)
-	# print information for each peak
-	peaks_group_cols = list(peaks_df.columns[0:6])
-	## group by peak info
+	if len(round2_df) > 0:
+		# sort the dataframe by peak location
+		round2_df.loc[:,"start"] = round2_df["start"].astype('int64')
+		round2_df.sort_values(by=["chr","start"], axis=0, ascending=True, inplace=True)
+		# print information for each peak
+		peaks_group_cols = list(peaks_df.columns[0:6])
+		## group by peak info
 
-	peak_groups_df = round2_df.groupby(peaks_group_cols)
-	## peak centric columns
-	peaks_centric_cols = peaks_group_cols
-	if narrowPeak_boolean:
-		peaks_centric_cols = peaks_centric_cols +["qValue"]+list(peaks_df.columns[10:])
-	else:
-		peaks_centric_cols = peaks_centric_cols + list(peaks_df.columns[6:])
-	peak_ann_df = round2_df.loc[:,peaks_centric_cols]
-	## put columns that are not peak centric into a peak context	
-	peak_nGenes_series = peak_groups_df.apply(lambda x: len(x["gene_id"].unique()))
-	peak_nGenes_df = peak_nGenes_series.to_frame().reset_index()
-	peak_nGenes_df.columns=peaks_group_cols+['numGenes']
-	peak_ann_df = peak_ann_df.merge(peak_nGenes_df,how='outer',on=peaks_group_cols)
-	peak_gid_series = peak_groups_df.apply(lambda x: ";".join(str(s) for s in list(x["gene_id"])))
-	peak_gid_df = peak_gid_series.to_frame().reset_index()
-	peak_gid_df.columns=peaks_group_cols+['gene_id']
-	peak_ann_df = peak_ann_df.merge(peak_gid_df,how='outer',on=peaks_group_cols)
-	peak2gene_info_cols = ['numGenes','gene_id']
-	column_order = peak_ann_df.columns
-	if narrowPeak_boolean:
-		column_order= list(peaks_df.columns[0:6]) + ["qValue"] + \
-			peak2gene_info_cols+list(peaks_df.columns[10:])
-		
-	else:
-		column_order= list(peaks_df.columns[0:6]) + \
-			peak2gene_info_cols+list(peaks_df.columns[6:])
-	peak_ann_df = peak_ann_df.loc[:,column_order]
+		peak_groups_df = round2_df.groupby(peaks_group_cols)
+		## peak centric columns
+		peaks_centric_cols = peaks_group_cols
+		if narrowPeak_boolean:
+			peaks_centric_cols = peaks_centric_cols +["qValue"]+list(peaks_df.columns[10:])
+		else:
+			peaks_centric_cols = peaks_centric_cols + list(peaks_df.columns[6:])
+		peak_ann_df = round2_df.loc[:,peaks_centric_cols]
+		## put columns that are not peak centric into a peak context	
+		peak_nGenes_series = peak_groups_df.apply(lambda x: len(x["gene_id"].unique()))
+		peak_nGenes_df = peak_nGenes_series.to_frame().reset_index()
+		peak_nGenes_df.columns=peaks_group_cols+['numGenes']
+		peak_ann_df = peak_ann_df.merge(peak_nGenes_df,how='outer',on=peaks_group_cols)
+		peak_gid_series = peak_groups_df.apply(lambda x: ";".join(str(s) for s in list(x["gene_id"])))
+		peak_gid_df = peak_gid_series.to_frame().reset_index()
+		peak_gid_df.columns=peaks_group_cols+['gene_id']
+		peak_ann_df = peak_ann_df.merge(peak_gid_df,how='outer',on=peaks_group_cols)
+		peak2gene_info_cols = ['numGenes','gene_id']
+		column_order = peak_ann_df.columns
+		if narrowPeak_boolean:
+			column_order= list(peaks_df.columns[0:6]) + ["qValue"] + \
+				peak2gene_info_cols+list(peaks_df.columns[10:])
+			
+		else:
+			column_order= list(peaks_df.columns[0:6]) + \
+				peak2gene_info_cols+list(peaks_df.columns[6:])
+		peak_ann_df = peak_ann_df.loc[:,column_order]
 
-	pd.set_option('float_format', '{:.2f}'.format)
-	peak_ann_df.to_csv(out, sep="\t", index=False, na_rep="NA")
+		pd.set_option('float_format', '{:.2f}'.format)
+		peak_ann_df.to_csv(out, sep="\t", index=False, na_rep="NA")
 
 	return(round2_df)
