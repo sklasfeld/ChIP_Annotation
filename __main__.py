@@ -242,7 +242,8 @@ if __name__ == '__main__':
     if len(args.addPeaksToTextFeatures) > 0:
         for chip_feat in args.addPeaksToTextFeatures:
             prefixNCols =chip_feat.split(":")
-            colList = prefixNCols[1].split(",")
+            colStr = ":".join(prefixNCols[1:len(prefixNCols)])
+            colList = colStr.split(",")
             addPeaksToTextFeatures_dic[prefixNCols[0]]=colList
     if (len(args.compareGenesToText) != len(args.compareGenesToTextNames) or
         len(args.compareGenesToText) != len(args.addGeneToTextFeatures)):
@@ -261,7 +262,8 @@ if __name__ == '__main__':
     if len(args.addGeneToTextFeatures) > 0:
         for chip_feat in args.addGeneToTextFeatures:
             prefixNCols =chip_feat.split(":")
-            colList = prefixNCols[1].split(",")
+            colStr = ":".join(prefixNCols[1:len(prefixNCols)])
+            colList = colStr.split(",")
             addGeneToTextFeatures_dic[prefixNCols[0]]=colList
 
     if args.compareSumRegToBed and not args.narrowpeak_file:
