@@ -11,6 +11,16 @@ import bin.round1_annotation as round1_annotation
 import bin.round2_annotation as round2_annotation
 import bin.genome_locations as genome_locations
 pd.options.mode.chained_assignment = 'raise'
+import traceback
+import warnings
+
+def warn_with_traceback(message, category, filename, lineno, file=None, line=None):
+
+    log = file if hasattr(file,'write') else sys.stderr
+    traceback.print_stack(file=log)
+    log.write(warnings.formatwarning(message, category, filename, lineno, line))
+
+warnings.showwarning = warn_with_traceback
 
 
 def text2vector(filename):
@@ -326,7 +336,8 @@ if __name__ == '__main__':
     gene_bedfile_types={"gene_chr" : object, \
         "gene_start" : np.int64, "gene_stop" : np.int64, "gene_id" : object, \
         "gene_score" : np.float64, "gene_strand":object}
-    gene_bedfile_df.loc[gene_bedfile_df["gene_score"]==".","gene_score"]=0
+    if "." in gene_bedfile_df["gene_score"]:
+        gene_bedfile_df.loc[gene_bedfile_df["gene_score"]==".","gene_score"]=0
     gene_bedfile_df = gene_bedfile_df.astype(gene_bedfile_types)
 
     # roundOfAnnotation = {} # roundOfAnnotation[peak_name] = round_annotated
@@ -993,7 +1004,9 @@ if __name__ == '__main__':
     ## reorganize data-table to show gene columns closer to peak columns and
     ## extra info towards the later columns
     peak2gene_info_cols = ['numGenes', 'gene_id'] + \
-        ['gene_overlap', 'distance_from_gene', 'summit_ann']
+        ['gene_overlap', 'distance_from_gene']
+    if args.narrowpeak_file:
+        peak2gene_info_cols = peak2gene_info_cols + ['summit_ann']
     peak_col_order = peak_group_cols[0:7] + peak2gene_info_cols + \
         peak_group_cols[7:] + dnase_genewise_cols + \
         addGeneToTextFeatures_cols 

@@ -26,12 +26,14 @@ def r2_annotate(gene_df, peaks_df, maxdist, out, \
 		chrInFile1_str = ",".join(peaks_chrs_list)
 		chrInFile2_str = ",".join(genes_chrs_list)
 		if len(inFile1and2) == 0:
-			err_msg = (("ERROR: NONE of the chromosomes columns in " + 
-				"the narrowPeak file do not match the chromosomes " + 
+			err_msg = (("WARNING: NONE of the chromosomes columns in " + 
+				"the narrowPeak file match the chromosomes " + 
 				"in the gene file.\nThe chromosomes in the bed " + 
 				"file are: %s.\nThe chromosome in gene file are: %s.") % \
 			( chrInFile1_str, chrInFile2_str))
-			sys.exit(err_msg)
+			sys.stderr.write(err_msg)
+			return(pd.DataFrame(columns=
+				list(peaks_df.columns) + list(gene_df.columns)))
 		else:
 			err_msg = (("WARNING: The chromosomes columns in the narrowPeak file " + \
 				" do not match the chromosomes in the gene file. The " + \

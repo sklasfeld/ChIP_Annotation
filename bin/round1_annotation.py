@@ -264,9 +264,10 @@ def r1_annotate(by, geneBed_file, bed_fname, peaks_df, prefix, \
 	gene_bedfile_types={"gene_chr" : object, \
 		"gene_start" : np.int64, "gene_stop" : np.int64, "gene_id" : object, \
 		"gene_score" : np.float64, "gene_strand":object}
-	gene_table.loc[gene_table["gene_score"]==".","gene_score"]=0
+	if "." in gene_table["gene_score"]:
+		gene_table.loc[gene_table["gene_score"]==".","gene_score"]=0
 	gene_table = gene_table.astype(gene_bedfile_types)
-	
+
 	if bp_upstream_filter > 0:
 		# remove tss info from upstream dataframe
 		upstream_peaks_df = upstream_peaks_df.drop(['tss_chr', 'tss_start', \
