@@ -211,6 +211,16 @@ if __name__ == '__main__':
         action='store_true')
 
     args = parser.parse_args()
+
+    # check if bed file exists and is not empty
+    if not os.path.exists(args.bed_file):
+        err_msg = ("ERROR: Cannot find path to BED file: %s" % args.bed_file)
+        sys.exit(err_msg)
+    if os.stat(args.bed_file).st_size == 0:
+        err_msg = ("ERROR: BED file is empty: %s" % args.bed_file)
+        sys.exit(err_msg)
+
+
     if args.rnaDESignificance:
         if args.rnaDESignificance[1].lower() != "max" and \
             args.rnaDESignificance[1].lower() != "min":
@@ -338,7 +348,7 @@ if __name__ == '__main__':
     gene_bedfile_types={"gene_chr" : object, \
         "gene_start" : np.int64, "gene_stop" : np.int64, "gene_id" : object, \
         "gene_score" : np.float64, "gene_strand":object}
-    if "." in gene_bedfile_df["gene_score"]:
+    if "." in list(gene_bedfile_df["gene_score"]):
         gene_bedfile_df.loc[gene_bedfile_df["gene_score"]==".","gene_score"]=0
     gene_bedfile_df = gene_bedfile_df.astype(gene_bedfile_types)
 
@@ -359,6 +369,9 @@ if __name__ == '__main__':
         names=bed_cols, dtype={"chr" : object, "start" : np.int64, \
         "stop" : np.int64, "name" : object, "signal" : np.float64, \
         "strand":object})
+
+    if (len(peaks_df)<=2):
+        sys.stderr.write("Warning: There are <=2 in BED file")
 
     ## print number of total peaks
     counts_list.append("number of total peaks\t%i" % len(peaks_df))
@@ -618,6 +631,9 @@ if __name__ == '__main__':
     ##		intragenic
     ##		${noFilter_tss_upstream} bp upstream
     ##		${noFilter_TTS_downstream} bp downstream
+    round2_bool=False
+    if args.round2ann:
+        round2_bool=True
     round1_peaks = round1_annotation.r1_annotate('peak',
         args.gene_bedfile, args.bed_file, 
         peaks_df, args.prefix, dir_name,
@@ -625,7 +641,8 @@ if __name__ == '__main__':
         bp_upstream_filter=args.filter_tss_upstream,
         bp_downstream_filter=args.filter_tts_downstream,
         ignore_conv_peaks=args.ignore_conv_peaks,
-        verbose=args.verbose, keep_tmps=args.keep_tmps)
+        verbose=args.verbose, keep_tmps=args.keep_tmps,
+        round2_bool=round2_bool)
     round1_peaks["distance_from_gene"] = \
         round1_peaks["distance_from_gene"].astype('float64')
     count_intragenic_genes = len( \
@@ -642,7 +659,7 @@ if __name__ == '__main__':
     ### Note that `round1_peaks` has a row for each
     ### peak-gene pairing. Therefore peaks with multiple
     ### gene annotations will be annotated in multiple rows.
-    if args.narrowpeak_file:
+    if args.narrowpeak_file and len(round1_peaks)>0:
         round1_summits = round1_annotation.r1_annotate('summit',
             args.gene_bedfile, args.narrowpeak_file, peaks_df, 
             args.prefix, dir_name, \
@@ -776,6 +793,8 @@ if __name__ == '__main__':
                 % (dir_name, args.prefix))
             round2_peaks = round2_annotation.r2_annotate(de_genes_df, 
                 outlier_df, args.outlier_filter, round2_ann_file)
+            if len(round1_peaks) < 1 and len(round2_peaks) < 1:
+                sys.exit("\nERROR: no peaks could be annotated to genes\n")
             round2_peaks["roundOfAnnotation"] = 2
             orphan_peaks_df = \
                 outlier_df[~outlier_df["name"].isin(round2_peaks["name"])]

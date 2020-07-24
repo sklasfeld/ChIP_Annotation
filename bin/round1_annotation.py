@@ -33,6 +33,8 @@ def r1_annotate(by, geneBed_file, bed_fname, peaks_df, prefix, \
 	 * ignore_conv_peaks - do not output peak information of peaks that annotate
 	  to two different peaks (default: False)
 	 * verbose - print out counts (default: False)
+	 * round2_bool - if False and nothing is found to annotate in round one
+	  then the script must exit.
 	"""
 	# default keyword parameters
 	per_inter_filter = 0
@@ -43,6 +45,7 @@ def r1_annotate(by, geneBed_file, bed_fname, peaks_df, prefix, \
 	keep_tmps = False
 	narrowPeak_boolean = False
 	region_cols = list(peaks_df.columns[:6])
+	round2_bool = False
 
 
 	# user-set keyword parameters
@@ -58,6 +61,8 @@ def r1_annotate(by, geneBed_file, bed_fname, peaks_df, prefix, \
 		verbose = keyword_parameters['verbose']
 	if ('keep_tmps' in keyword_parameters):
 		keep_tmps = keyword_parameters['keep_tmps']
+	if ('round2_bool' in keyword_parameters):
+		round2_bool = keyword_parameters['round2_bool']
 	if 'qValue' in peaks_df.columns:
 		narrowPeak_boolean = True
 	if by == "summit":
@@ -123,7 +128,7 @@ def r1_annotate(by, geneBed_file, bed_fname, peaks_df, prefix, \
 			sys.exit("\nAwkward!!! There are no peaks in genes...\n"+ 
 			"Failure to pass Round 1 Annotation has closed script...")
 		else:
-			sys.stderr.write(("Warning: There are NO intragenic peaks " + 
+			sys.stderr.write(("Warning: There are NO INTRAGENIC peaks " + 
 				"(within a gene).\n"))
 			intragenic_peaks_df=pd.DataFrame(
 				columns=genesOverlap_cols+["distance_from_gene"])
@@ -162,26 +167,29 @@ def r1_annotate(by, geneBed_file, bed_fname, peaks_df, prefix, \
 		if verbose:
 			sys.stdout.write("Annotating peaks UPSTREAM of genes ...\n")
 		# get dataframe of all INTERGENIC peaks (not found inside genes)
-		if by=="peak":
-			intergenic_peaks_df = region_df.merge(
-				intragenic_peaks_df, how='outer', indicator=True,
-				on=list(region_df.columns))
-			intergenic_peaks_df = intergenic_peaks_df.loc[ \
-				intergenic_peaks_df["_merge"]=="left_only", :]
-			intergenic_peaks_df = intergenic_peaks_df.loc[:, list(region_df.columns)]
+		if len(intragenic_peaks_df) > 0:
+			if by=="peak":
+				intergenic_peaks_df = region_df.merge(
+					intragenic_peaks_df, how='outer', indicator=True,
+					on=list(region_df.columns))
+
+				intergenic_peaks_df = intergenic_peaks_df.loc[ \
+					intergenic_peaks_df["_merge"]=="left_only", :]
+				intergenic_peaks_df = intergenic_peaks_df.loc[:, list(region_df.columns)]
+			else:
+				intergenic_peaks_df = region_df.merge(intragenic_peaks_df,
+					left_on=['chr', 'start', 'name', 'signal', 'strand'],
+					right_on=['chr', 'summit_start', 'name', 'signal', 'strand'],
+					how='outer', indicator=True)
+				intergenic_peaks_df = intergenic_peaks_df.loc[ \
+					intergenic_peaks_df["_merge"]=="left_only", :]
+				intergenic_peaks_df = intergenic_peaks_df.rename(
+					columns = {"start_x":"start", "stop_x":"stop"})
+				intergenic_peaks_df = intergenic_peaks_df.loc[:, list(region_df.columns)]
 		else:
-			intergenic_peaks_df = region_df.merge(intragenic_peaks_df,
-				left_on=['chr', 'start', 'name', 'signal', 'strand'],
-				right_on=['chr', 'summit_start', 'name', 'signal', 'strand'],
-				how='outer', indicator=True)
-			intergenic_peaks_df = intergenic_peaks_df.loc[ \
-				intergenic_peaks_df["_merge"]=="left_only", :]
-			intergenic_peaks_df = intergenic_peaks_df.rename(
-				columns = {"start_x":"start", "stop_x":"stop"})
-			intergenic_peaks_df = intergenic_peaks_df.loc[:, list(region_df.columns)]
+			intergenic_peaks_df = region_df.copy()
 		# first ignore peaks downstream (-id) of genes since upstream is preferred
 		upstream_peaks_df = pd.DataFrame()
-		#if not os.path.isfile(upsteamgenes_file):
 		if ignore_conv_peaks:
 			upstream_peaks_df = bin.upstream_peaks.annotate(prefix, \
 				intergenic_peaks_df, geneBed_file, bp_upstream_filter, \
@@ -201,9 +209,9 @@ def r1_annotate(by, geneBed_file, bed_fname, peaks_df, prefix, \
 			upstream_peaks_df = upstream_peaks_df.rename(
 				columns = {"start_y":"start", "stop_y":"stop"})
 			upstream_peaks_df = upstream_peaks_df.loc[:,orig_col_order+['summit_start']]
-		upstream_peaks_df = upstream_peaks_df.merge(peaks_df, how = 'left', on=list(peaks_df.columns[:6]))
-		upstream_peaks_df.loc[:,"gene_overlap"]=None
-
+		if len(upstream_peaks_df) > 0:
+			upstream_peaks_df = upstream_peaks_df.merge(peaks_df, how = 'left', on=list(peaks_df.columns[:6]))
+			upstream_peaks_df.loc[:,"gene_overlap"]=0
 		# STEP 3: Collect Peaks that are DOWNSTREAM of genes
 	if verbose:
 		sys.stdout.write("Annotating peaks DOWNSTREAM of genes ...\n")
@@ -264,7 +272,7 @@ def r1_annotate(by, geneBed_file, bed_fname, peaks_df, prefix, \
 	gene_bedfile_types={"gene_chr" : object, \
 		"gene_start" : np.int64, "gene_stop" : np.int64, "gene_id" : object, \
 		"gene_score" : np.float64, "gene_strand":object}
-	if "." in gene_table["gene_score"]:
+	if "." in list(gene_table["gene_score"]):
 		gene_table.loc[gene_table["gene_score"]==".","gene_score"]=0
 	gene_table = gene_table.astype(gene_bedfile_types)
 
@@ -314,78 +322,86 @@ def r1_annotate(by, geneBed_file, bed_fname, peaks_df, prefix, \
 			if len(intragenic_peaks_df) > 0:
 				round1_frame = [intragenic_peaks_df]
 			else:
-				sys.exit("\nAwkward!!! There are no INTRAGENIC peaks " + 
-					"annotated in round 1...\n"+ 
-					"Failure to pass Round 1 Annotation has closed script...")
-	#round1_df = pd.concat(round1_frame,sort=False)
-	round1_df = pd.concat(round1_frame, sort=True)
+				if round2_bool:
+					sys.stderr.write("\nWarning: There are NO INTERGENIC peaks " + 
+						"annotated in round 1...\n")
+					sys.stderr.flush()
+				else:
+					sys.exit("ERROR: no peaks could be annotated to genes.")
+	if len(round1_frame) > 0:
+		round1_df = pd.concat(round1_frame, sort=True)
+	else:
+		round1_df = intragenic_peaks_df
 	# sort the dataframe by peak location
 	round1_df["start"] = round1_df["start"].astype('int64')
-	round1_df.sort_values(by=["chr","start"], axis=0, ascending=True, inplace=True)
-	# print information for each peak
-	round1_ann = ("%s/%s_r1_peak_annotations.txt" % (dir_name, prefix))
-	peaks_group_cols = peak2gene_cols[0:6]
-	## group by peak info
-	peak_groups_df = round1_df.groupby(peaks_group_cols)
-	## peak centric columns
-	peaks_centric_cols = []
-	if narrowPeak_boolean:
-		peaks_centric_cols = peaks_group_cols+["qValue"] + \
-			list(peaks_df.columns[10:])
-	else:
-		peaks_centric_cols += list(peaks_df.columns[6:])
-	peak_ann_df = round1_df.loc[:,peaks_group_cols]
-	## put columns that are not peak centric into a peak context
-	peak_nGenes_series = peak_groups_df.apply(
-		lambda x: len(x["gene_id"].unique()))
-	peak_nGenes_df = peak_nGenes_series.to_frame().reset_index()
-	peak_nGenes_df.columns=peaks_group_cols+['numGenes']
-	peak_ann_df = peak_ann_df.merge(
-		peak_nGenes_df,how='outer',on=peaks_group_cols)
-	peak_gid_series = peak_groups_df.apply(lambda x: ";".join(
-		str(s) for s in list(x["gene_id"])))
-	peak_gid_df = peak_gid_series.to_frame().reset_index()
-	peak_gid_df.columns=peaks_group_cols+['gene_id']
-	peak_ann_df = peak_ann_df.merge(peak_gid_df,how='outer',on=peaks_group_cols)
-	peak2gene_info_cols = ['numGenes','gene_id']
-	column_order = peak_ann_df.columns
-	if narrowPeak_boolean:
-		column_order= peak2gene_cols[0:6] + ["qValue"] + \
-			peak2gene_info_cols+list(peaks_df.columns[10:])	
-	else:
-		column_order= peak2gene_cols[0:6] + \
-			peak2gene_info_cols+list(peaks_df.columns[6:])
-	peak_ann_df = peak_ann_df.reindex(columns=column_order)
-	pd.set_option('float_format', '{:.2f}'.format)
-	peak_ann_df.to_csv(round1_ann, sep="\t", index=False, na_rep="NA")
-	# get gene-centric annotation
-	gene_groups_df = round1_df.groupby(peak2gene_cols[6:12])
-	gene_nPeaks_series = gene_groups_df.apply(lambda x: x.shape[0])
-	gene_nPeaks_df = gene_nPeaks_series.to_frame().reset_index()
-	gene_nPeaks_df.columns=peak2gene_cols[6:12]+['numPeaks']
-	gene_dis_series = gene_groups_df.apply(lambda x: ";".join(
-		str(s) for s in list(x["distance_from_gene"])))
-	gene_overlap_series = gene_groups_df.apply(lambda x: ";".join(
-		str(s) for s in list(x["gene_overlap"])))
-	gene_dis_df = gene_dis_series.to_frame().reset_index()
-	gene_dis_df.columns=peak2gene_cols[6:12]+['distance']
-	gene_df = gene_nPeaks_df.merge(gene_dis_df,how='outer',on=peak2gene_cols[6:12])
-	if narrowPeak_boolean:
-		gene_qval_series = gene_groups_df.apply(lambda x: ";".join(
-			str(s) for s in list(x["qValue"])))
-		gene_qval_df = gene_qval_series.to_frame().reset_index()
-		gene_qval_df.columns=peak2gene_cols[6:12]+['qValue']
-		gene_df = gene_df.merge(gene_qval_df,how='outer',on=peak2gene_cols[6:12])
-	gene_pname_series = gene_groups_df.apply(lambda x: ";".join(
-		str(s) for s in list(x["name"])))
-	gene_pname_df = gene_pname_series.to_frame().reset_index()
-	gene_pname_df.columns=peak2gene_cols[6:12]+['peak_name']
-	gene_df = gene_df.merge(gene_pname_df,how='outer',on=peak2gene_cols[6:12])
-	round1_gene_ann = ("%s/%s_r1_gene_annotations.txt" % (dir_name, prefix))
-	gene_df.to_csv(round1_gene_ann, sep="\t", index=False)
-	if verbose:
-		sys.stdout.write("Number of Unique Genes that are Annotated: %i\n" % \
-			gene_df.shape[0])
+	if len(round1_frame) > 0:
+		round1_df.sort_values(by=["chr","start"], axis=0, ascending=True, inplace=True)
+		# print information for each peak
+		round1_ann = ("%s/%s_r1_peak_annotations.txt" % (dir_name, prefix))
+		peaks_group_cols = peak2gene_cols[0:6]
+		## group by peak info
+		peak_groups_df = round1_df.groupby(peaks_group_cols)
+		## peak centric columns
+		peaks_centric_cols = []
+		if narrowPeak_boolean:
+			peaks_centric_cols = peaks_group_cols+["qValue"] + \
+				list(peaks_df.columns[10:])
+		else:
+			peaks_centric_cols += list(peaks_df.columns[6:])
+		peak_ann_df = round1_df.loc[:,peaks_group_cols]
+		## put columns that are not peak centric into a peak context
+		peak_nGenes_series = peak_groups_df.apply(
+			lambda x: len(x["gene_id"].unique()))
+		peak_nGenes_df = peak_nGenes_series.to_frame().reset_index()
+		peak_nGenes_df.columns=peaks_group_cols+['numGenes']
+		peak_ann_df = peak_ann_df.merge(
+			peak_nGenes_df,how='outer',on=peaks_group_cols)
+		peak_gid_series = peak_groups_df.apply(lambda x: ";".join(
+			str(s) for s in list(x["gene_id"])))
+		peak_gid_df = peak_gid_series.to_frame().reset_index()
+		peak_gid_df.columns=peaks_group_cols+['gene_id']
+		peak_ann_df = peak_ann_df.merge(peak_gid_df,how='outer',on=peaks_group_cols)
+		peak2gene_info_cols = ['numGenes','gene_id']
+	
+		column_order = peak_ann_df.columns
+		if narrowPeak_boolean:
+			column_order= peak2gene_cols[0:6] + ["qValue"] + \
+				peak2gene_info_cols+list(peaks_df.columns[10:])	
+		else:
+			column_order= peak2gene_cols[0:6] + \
+				peak2gene_info_cols+list(peaks_df.columns[6:])
+		peak_ann_df = peak_ann_df.reindex(columns=column_order)
+		pd.set_option('float_format', '{:.2f}'.format)
+		if len(round1_ann) > 0:
+			peak_ann_df.to_csv(round1_ann, sep="\t", index=False, na_rep="NA")
+		# get gene-centric annotation
+		gene_groups_df = round1_df.groupby(peak2gene_cols[6:12])
+		gene_nPeaks_series = gene_groups_df.apply(lambda x: x.shape[0])
+		gene_nPeaks_df = gene_nPeaks_series.to_frame().reset_index()
+		gene_nPeaks_df.columns=peak2gene_cols[6:12]+['numPeaks']
+		gene_dis_series = gene_groups_df.apply(lambda x: ";".join(
+			str(s) for s in list(x["distance_from_gene"])))
+		gene_overlap_series = gene_groups_df.apply(lambda x: ";".join(
+			str(s) for s in list(x["gene_overlap"])))
+		gene_dis_df = gene_dis_series.to_frame().reset_index()
+		gene_dis_df.columns=peak2gene_cols[6:12]+['distance']
+		gene_df = gene_nPeaks_df.merge(gene_dis_df,how='outer',on=peak2gene_cols[6:12])
+		if narrowPeak_boolean:
+			gene_qval_series = gene_groups_df.apply(lambda x: ";".join(
+				str(s) for s in list(x["qValue"])))
+			gene_qval_df = gene_qval_series.to_frame().reset_index()
+			gene_qval_df.columns=peak2gene_cols[6:12]+['qValue']
+			gene_df = gene_df.merge(gene_qval_df,how='outer',on=peak2gene_cols[6:12])
+		gene_pname_series = gene_groups_df.apply(lambda x: ";".join(
+			str(s) for s in list(x["name"])))
+		gene_pname_df = gene_pname_series.to_frame().reset_index()
+		gene_pname_df.columns=peak2gene_cols[6:12]+['peak_name']
+		gene_df = gene_df.merge(gene_pname_df,how='outer',on=peak2gene_cols[6:12])
+		round1_gene_ann = ("%s/%s_r1_gene_annotations.txt" % (dir_name, prefix))
+		gene_df.to_csv(round1_gene_ann, sep="\t", index=False)
+		if verbose:
+			sys.stdout.write("Number of Unique Genes that are Annotated: %i\n" % \
+				gene_df.shape[0])
 	return (round1_df)
 
 
