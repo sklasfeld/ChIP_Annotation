@@ -110,6 +110,7 @@ def r1_annotate(by, geneBed_file, bed_fname, peaks_df, prefix, \
 			closestgenes_file = ("%s/%s_closest_by%s.tsv" % (dir_name, prefix, by))
 			closestGenes2Peak_df = closestGenes2Peak_BedTool.to_dataframe(
 				names=region_cols+geneBed_cols+["distance"])
+			closestGenes2Peak_df = closestGenes2Peak_df["signal"].astype(np.float64)
 			closestGenes2Peak_df.to_csv(closestgenes_file, 
 				sep="\t", index=False)
 
@@ -133,8 +134,11 @@ def r1_annotate(by, geneBed_file, bed_fname, peaks_df, prefix, \
 			intragenic_peaks_df=pd.DataFrame(
 				columns=genesOverlap_cols+["distance_from_gene"])
 	else:
+
 		intragenic_peaks_df = bedtoolsIntragenicBedTool.to_dataframe(
 				names=genesOverlap_cols)
+		intragenic_peaks_df["signal"] = \
+			intragenic_peaks_df["signal"].astype(np.float64)
 		if keep_tmps:
 			bedtools_intragenic_file = ("%s/%s_intragenic_by%s.txt" % 
 				(dir_name, prefix, by))
@@ -157,8 +161,17 @@ def r1_annotate(by, geneBed_file, bed_fname, peaks_df, prefix, \
 			intragenic_peaks_df = intragenic_peaks_df.rename(
 				columns = {"start_y":"start", "stop_y":"stop"})
 			intragenic_peaks_df = intragenic_peaks_df.loc[:,orig_col_order+['summit_start']]
+		print("BEEEEE4444")
+		print(peaks_df.loc[:,region_cols+["highMock_MNase2"]].head())
+		print(intragenic_peaks_df.loc[:,region_cols+["highMock_MNase2"]].head())
+		#print(peaks_df.columns)
+		#print(intragenic_peaks_df.columns)
 		intragenic_peaks_df = intragenic_peaks_df.merge(peaks_df, how = 'left', 
-			on=region_cols)
+			on=region_cols,sort=True)
+		print("aftaaa")
+		print(peaks_df.loc[:,region_cols+["highMock_MNase2"]].head())
+		print(intragenic_peaks_df.loc[:,region_cols+["highMock_MNase2"]].head())
+		
 		#intragenic_peak_list =  list(intragenic_peaks_df['name'].unique())
 	
 

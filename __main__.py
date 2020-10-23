@@ -141,7 +141,7 @@ if __name__ == '__main__':
         help='list of column names for the output of the comparison \
         between the features in the bed file(s) in `compareSumRegToBed` \
         and the ChIP summit regions (eg.LFY1_motif)', required=False, default=[])
-    parser.add_argument('-sbr', '--summitRegion', nargs='*', type=np.int64, 
+    parser.add_argument('-sbr', '--summitRegion', nargs='*', 
         help='To run `compareSumRegToBed` the user must set the \
         boundaries around the peak summit to compare to. The specific \
         format for this parameter is: \
@@ -330,8 +330,8 @@ if __name__ == '__main__':
             summitRegArgList = sr.split(",")
             if len(summitRegArgList) != 3:
                 sys.exit(sr_err)
-            summit_region_downstream[summitRegArgList[0]]=summitRegArgList[1]
-            summit_region_upstream[summitRegArgList[0]]=summitRegArgList[1]
+            summit_region_downstream[summitRegArgList[0]]=int(summitRegArgList[1])
+            summit_region_upstream[summitRegArgList[0]]=int(summitRegArgList[2])
 
 
     dir_name = os.path.abspath(args.dir_name)
@@ -393,8 +393,9 @@ if __name__ == '__main__':
             "strand" : object, "fold_change": np.float64, \
             "pValue" : np.float64, "qValue" : np.float64, \
             "summit" : np.int64})
+        if len(narrowPeak_df) != len(peaks_df):
+            sys.exit("ERROR: peak file and bed file do not match")
         peaks_df = narrowPeak_df.copy()
-
 
     # compare experiments ChIP peaks with other bed files
     comparePeaksToBeds_colnames=args.comparePeaksToBedsNames
@@ -563,7 +564,7 @@ if __name__ == '__main__':
             summit_df["start"]=(peaks_df["start"] + 
                 peaks_df["summit"] - bp_downstream_of_summit)
             summit_df["stop"]=(peaks_df["start"] + 
-                peaks_df["summit"] + bp_upstream_of_summit + 1)
+                peaks_df["summit"] + bp_upstream_of_summit)
             summit_df = summit_df.loc[:,bed_cols]
             summit_df.to_csv(summitRegionBedFile, sep="\t", header=False, \
                 index=False)
@@ -571,7 +572,6 @@ if __name__ == '__main__':
 
             bedtools_table = genome_locations.compare_bedfiles(summitRegionBedFile, \
                 mFile, verbal=args.verbose)
-
             bedtools_table["location"] = bedtools_table["chr_b"].map(str) + "_" \
                                       + bedtools_table["start_b"].map(str) + "_" \
                                       + bedtools_table["stop_b"].map(str)
@@ -634,6 +634,9 @@ if __name__ == '__main__':
     round2_bool=False
     if args.round2ann:
         round2_bool=True
+    #print("BEFORE ROUND1 PEAK ANN")
+    #print(peaks_df.columns)
+    #print(peaks_df["highDex_MNase1"].head())
     round1_peaks = round1_annotation.r1_annotate('peak',
         args.gene_bedfile, args.bed_file, 
         peaks_df, args.prefix, dir_name,
@@ -680,7 +683,6 @@ if __name__ == '__main__':
                 row["summit"]) == 
                 row["summit_start"], axis=1)
         round1_peaks = round1_peaks.drop(["summit_start"],axis=1)
-
     if args.verbose:
         # number intragenic
         sys.stdout.write("Number of Peaks INSIDE Genes: %i\n" % \

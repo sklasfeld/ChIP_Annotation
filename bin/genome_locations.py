@@ -34,7 +34,7 @@ def compare_bedfiles(bedfile1, bedfile2, *positional_parameters, \
 	if not os.path.isfile(bedfile1) or os.stat(bedfile1).st_size == 0:
 		sys.exit((("\nERROR: Cannot find file: %s\n") % bedfile1))
 	if not os.path.isfile(bedfile2) or os.stat(bedfile2).st_size == 0:
-		sys.exit((("\nERROR: Cannot find file: %s\n") % bedfile1))
+		sys.exit((("\nERROR: Cannot find file: %s\n") % bedfile2))
 
 	file1_df = pd.read_csv(bedfile1,sep='\t', header=None, dtype=str)
 	ncols_file1 = file1_df.shape[1]
