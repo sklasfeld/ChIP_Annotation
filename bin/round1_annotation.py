@@ -161,17 +161,8 @@ def r1_annotate(by, geneBed_file, bed_fname, peaks_df, prefix, \
 			intragenic_peaks_df = intragenic_peaks_df.rename(
 				columns = {"start_y":"start", "stop_y":"stop"})
 			intragenic_peaks_df = intragenic_peaks_df.loc[:,orig_col_order+['summit_start']]
-		print("BEEEEE4444")
-		print(peaks_df.loc[:,region_cols+["highMock_MNase2"]].head())
-		print(intragenic_peaks_df.loc[:,region_cols+["highMock_MNase2"]].head())
-		#print(peaks_df.columns)
-		#print(intragenic_peaks_df.columns)
 		intragenic_peaks_df = intragenic_peaks_df.merge(peaks_df, how = 'left', 
 			on=region_cols,sort=True)
-		print("aftaaa")
-		print(peaks_df.loc[:,region_cols+["highMock_MNase2"]].head())
-		print(intragenic_peaks_df.loc[:,region_cols+["highMock_MNase2"]].head())
-		
 		#intragenic_peak_list =  list(intragenic_peaks_df['name'].unique())
 	
 
@@ -416,6 +407,7 @@ def r1_annotate(by, geneBed_file, bed_fname, peaks_df, prefix, \
 			sys.stdout.write("Number of Unique Genes that are Annotated: %i\n" % \
 				gene_df.shape[0])
 	return (round1_df)
+
 
 
 
