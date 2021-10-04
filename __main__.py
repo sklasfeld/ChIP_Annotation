@@ -75,7 +75,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="At its core the purpose of \
         this code is to annotate ChIP peak regions to genes. \
         Other parameters allow for users to annotate both the peaks and the \
-        genes further with external datasets.",prog='ChIP_Annotation')
+        genes further with external datasets.")
     parser.add_argument('prefix', help='prefix for output file(eg. LFY)')
     parser.add_argument('dir_name', help='directory where output will go')
     parser.add_argument('bed_file', help='bed file containing ChIP peaks. \
@@ -142,9 +142,10 @@ if __name__ == '__main__':
         between the features in the bed file(s) in `compareSumRegToBed` \
         and the ChIP summit regions (eg.LFY1_motif)', required=False, default=[])
     parser.add_argument('-sbf', '--compSummitOverlapScores', help='if summit \
-        overlaps with a row in one of the bed files in `compareSumRegToBed` \
-        then report the score value in that row. Otherwise put NA.',
-        action='store_true', default=False)
+        overlaps with a row in one f the bed files in `compareSumRegToBed` \
+        then report the either the `score` or `name` value of the overlapping \
+	feature. Otherwise put NA.',
+        choices=['name','score'])
     parser.add_argument('-sbr', '--summitRegion', nargs='*', 
         help='To run `compareSumRegToBed` the user must set the \
         boundaries around the peak summit to compare to. The specific \
@@ -213,8 +214,6 @@ if __name__ == '__main__':
         action='store_true')
     parser.add_argument('--verbose', help='echo processing', \
         action='store_true')
-    parser.add_argument('--version', action='version', 
-        version='%(prog)s 1.0.0; Last Updated: 10/23/2020')
 
     args = parser.parse_args()
 
@@ -298,7 +297,6 @@ if __name__ == '__main__':
                 "compareSumRegToBedColNames length = %i\n") % 
                 (len(args.compareSumRegToBed),
                 len(args.compareSumRegToBedColNames)))
-            print(args.compareSumRegToBed)
             sys.exit(err_msg)
     if args.compareSumRegToBed or args.summitRegion:
         if len(args.compareSumRegToBed) != len(args.summitRegion):
@@ -569,6 +567,7 @@ if __name__ == '__main__':
             summit_df = peaks_df.copy()
             summit_df["start"]=(peaks_df["start"] + 
                 peaks_df["summit"] - bp_downstream_of_summit)
+            summit_df.loc[summit_df["start"]<0,"start"]=0
             summit_df["stop"]=(peaks_df["start"] + 
                 peaks_df["summit"] + bp_upstream_of_summit)
             summit_df = summit_df.loc[:,bed_cols]
@@ -576,16 +575,19 @@ if __name__ == '__main__':
                 index=False)
             bedtools_table = genome_locations.compare_bedfiles(summitRegionBedFile, \
                 mFile, verbal=args.verbose)
-            
             bedtools_table["location"] = bedtools_table["chr_b"].map(str) + "_" \
                                       + bedtools_table["start_b"].map(str) + "_" \
                                       + bedtools_table["stop_b"].map(str)
             featuresInSummitRegion_df = bedtools_table.groupby(bed_cols)
             add_col=mPrefix
             if args.compSummitOverlapScores:
-                add_col = ("%s:score" % mPrefix)
-                bedLoc_series = featuresInSummitRegion_df.apply( \
-                    lambda x: ";".join(str(s) for s in list(x["signal_b"])))
+                add_col = ("%s:%s" % (mPrefix,args.compSummitOverlapScores))
+                if args.compSummitOverlapScores == "name":
+	                bedLoc_series = featuresInSummitRegion_df.apply( \
+        	            lambda x: ";".join(str(s) for s in list(x["name_b"])))
+                else:
+	                bedLoc_series = featuresInSummitRegion_df.apply( 
+			    lambda x: ";".join(str(s) for s in list(x["signal_b"])))
                 bedLoc_df = bedLoc_series.to_frame().reset_index()
                 bedLoc_df = bedLoc_df.rename(columns={0: (add_col)})
                 bedLoc_df = bedLoc_df.loc[:,["name", add_col]]
@@ -651,9 +653,6 @@ if __name__ == '__main__':
     round2_bool=False
     if args.round2ann:
         round2_bool=True
-    #print("BEFORE ROUND1 PEAK ANN")
-    #print(peaks_df.columns)
-    #print(peaks_df["highDex_MNase1"].head())
     round1_peaks = round1_annotation.r1_annotate('peak',
         args.gene_bedfile, args.bed_file, 
         peaks_df, args.prefix, dir_name,
@@ -1140,7 +1139,6 @@ if __name__ == '__main__':
     ## list True if any of the peaks that the gene is annotated to 
     ## contains a feature in their summit region (compareSumRegToBed)
     if args.compareSumRegToBed:
-        print("WE ARE HERE")
         for sumRegion_col in compareSumRegToBed_colnames:
             gene_sumRegion_series = gene_groups_df.apply(lambda x: ";".join(str(s) for s in list(x[sumRegion_col])))
             #gene_sumRegion_series = gene_groups_df.apply(lambda x: x[sumRegion_col].notnull().any())
@@ -1149,7 +1147,6 @@ if __name__ == '__main__':
             gene_ann_df = gene_ann_df.merge(gene_sumRegion_df, how='left', \
                                             on='gene_id')
             gene_ann_df.loc[:,sumRegion_col].fillna("NA", inplace=True)
-            print(gene_ann_df.loc[:,sumRegion_col].head())
     ## list True if any of the peaks that the gene is annotated to is found in a
     ## a DHS (dnase_files)
     if args.dnase_files:
@@ -1177,4 +1174,5 @@ if __name__ == '__main__':
         olog_file.write("%s\n" % (counts_list[i]))
 
     olog_file.close()
+
 
