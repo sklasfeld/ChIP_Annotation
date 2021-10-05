@@ -340,8 +340,6 @@ def r1_annotate(by, geneBed_file, bed_fname, peaks_df, prefix, \
 	round1_df["start"] = round1_df["start"].astype('int64')
 	if len(round1_frame) > 0:
 		round1_df.sort_values(by=["chr","start"], axis=0, ascending=True, inplace=True)
-		# print information for each peak
-		round1_ann = ("%s/%s_r1_peak_annotations.txt" % (dir_name, prefix))
 		peaks_group_cols = peak2gene_cols[0:6]
 		## group by peak info
 		peak_groups_df = round1_df.groupby(peaks_group_cols)
@@ -376,8 +374,12 @@ def r1_annotate(by, geneBed_file, bed_fname, peaks_df, prefix, \
 				peak2gene_info_cols+list(peaks_df.columns[6:])
 		peak_ann_df = peak_ann_df.reindex(columns=column_order)
 		pd.set_option('float_format', '{:.2f}'.format)
-		if len(round1_ann) > 0:
-			peak_ann_df.to_csv(round1_ann, sep="\t", index=False, na_rep="NA")
+		
+		# print information for each peak
+		#round1_ann = ("%s/%s_r1_peak_annotations.txt" % (dir_name, prefix))
+		#if len(round1_ann) > 0:
+		#	peak_ann_df.to_csv(round1_ann, sep="\t", index=False, na_rep="NA")
+		
 		# get gene-centric annotation
 		gene_groups_df = round1_df.groupby(peak2gene_cols[6:12])
 		gene_nPeaks_series = gene_groups_df.apply(lambda x: x.shape[0])
@@ -401,11 +403,18 @@ def r1_annotate(by, geneBed_file, bed_fname, peaks_df, prefix, \
 		gene_pname_df = gene_pname_series.to_frame().reset_index()
 		gene_pname_df.columns=peak2gene_cols[6:12]+['peak_name']
 		gene_df = gene_df.merge(gene_pname_df,how='outer',on=peak2gene_cols[6:12])
-		round1_gene_ann = ("%s/%s_r1_gene_annotations.txt" % (dir_name, prefix))
-		gene_df.to_csv(round1_gene_ann, sep="\t", index=False)
+		
+		#round1_gene_ann = ("%s/%s_r1_gene_annotations.txt" % (dir_name, prefix))
+		#gene_df.to_csv(round1_gene_ann, sep="\t", index=False)
+		
 		if verbose:
 			sys.stdout.write("Number of Unique Genes that are Annotated: %i\n" % \
 				gene_df.shape[0])
+	try:
+		os.remove(temp_summit_bed_file)
+	except NameError:
+		temp_summit_bed_file=None
+
 	return (round1_df)
 
 

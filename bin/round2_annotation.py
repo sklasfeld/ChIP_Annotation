@@ -3,7 +3,7 @@
 import pandas as pd
 import sys
 
-def r2_annotate(gene_df, peaks_df, maxdist, out, \
+def r2_annotate(gene_df, peaks_df, maxdist, \
 	*positional_parameters, **keyword_parameters):
 	""" calculate distance between features
 
@@ -11,7 +11,6 @@ def r2_annotate(gene_df, peaks_df, maxdist, out, \
 	- gene_df: gene dataframe with strand info; distance based on this file
 	- peaks_df: peaks dataframe to compare with
 	- maxdist: maximum distance to report, if no maximum, then input -1
-	- out: tab-delimited file with round2 annotations
 	"""
 
 	narrowPeak_boolean = False
@@ -126,6 +125,6 @@ def r2_annotate(gene_df, peaks_df, maxdist, out, \
 		peak_ann_df = peak_ann_df.loc[:,column_order]
 
 		pd.set_option('float_format', '{:.2f}'.format)
-		peak_ann_df.to_csv(out, sep="\t", index=False, na_rep="NA")
+		#peak_ann_df.to_csv(out, sep="\t", index=False, na_rep="NA")
 
 	return(round2_df)

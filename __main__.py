@@ -807,10 +807,12 @@ if __name__ == '__main__':
         all_de_genes = list(set(all_de_genes))
         de_genes_df = gene_bedfile_df[gene_bedfile_df['gene_id'].isin(all_de_genes)]
         if args.round2ann:
-            round2_ann_file = ("%s/%s_r2_peak_annotations.txt" 
-                % (dir_name, args.prefix))
+            #round2_ann_file = ("%s/%s_r2_peak_annotations.txt" 
+            #    % (dir_name, args.prefix))
+            #round2_peaks = round2_annotation.r2_annotate(de_genes_df, 
+            #    outlier_df, args.outlier_filter, round2_ann_file)
             round2_peaks = round2_annotation.r2_annotate(de_genes_df, 
-                outlier_df, args.outlier_filter, round2_ann_file)
+                outlier_df, args.outlier_filter)
             if len(round1_peaks) < 1 and len(round2_peaks) < 1:
                 sys.exit("\nERROR: no peaks could be annotated to genes\n")
             round2_peaks["roundOfAnnotation"] = 2
