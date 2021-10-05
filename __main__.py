@@ -923,7 +923,7 @@ if __name__ == '__main__':
             other_genewise_file = args.compareGenesToText[other_genewise_idx]
             other_genewise_prefix = args.compareGenesToTextNames[other_genewise_idx]
             other_genewise_df = pd.read_csv(other_genewise_file, sep="\t",
-                index_col=False)
+                index_col=False, dtype=object)
             # Report TRUE/FALSE whether both samples annotate to the same
             # genes
             all_peaks_df.loc[:,other_genewise_prefix] = \
