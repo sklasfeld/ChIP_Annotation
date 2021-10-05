@@ -97,12 +97,12 @@ def annotate(prefix, intergenic_peaks_df, gene_file, maximum_bp, outdir, \
         upstream_filtered_df = pd.concat(upstream_filtered_arr)
     upstream_filtered_df = upstream_filtered_df[
         list(intergenic_peaks_df.columns[0:6]) + list(tss_table.columns) + ["distance_from_gene"]]
-    outfile = ("%s/%s_closest_id.txt" % (outdir, prefix))
     for upstream_filtered_cols in upstream_filtered_df.columns:
         upstream_filtered_df.loc[:,upstream_filtered_cols] = \
             upstream_filtered_df[upstream_filtered_cols].astype( \
             upstream_df[upstream_filtered_cols].dtype)
-    upstream_filtered_df.to_csv(outfile, sep="\t", index=False, header=False)
+    #outfile = ("%s/%s_closest_id.txt" % (outdir, prefix))
+    #upstream_filtered_df.to_csv(outfile, sep="\t", index=False, header=False)
     if len(convergent_peaks_arr) > 0:
         convergent_peaks_df = pd.concat(convergent_peaks_arr)
         convergent_peaks_file = ("%s/%s_convergent_upstream_peaks.txt" % (outdir,prefix))
