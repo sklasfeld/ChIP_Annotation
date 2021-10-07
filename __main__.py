@@ -44,6 +44,16 @@ def listOrFalse(res_series):
         string_list = ";".join([str(y) for y in res_series if (y != False and y != "False")])
         return string_list
 
+def seriesLen(x):
+    """check the length of a series"""
+    if len(x) == 1:
+        if x[0] != x[0]:
+            return(0)
+        else:
+            return(1)
+    else:
+        return(len(x))
+
 def restricted_float(x):
     try:
         x = float(x)
@@ -978,7 +988,7 @@ if __name__ == '__main__':
     
     
     ## list number of genes that annotate to peak
-    peak_nGenes_series = peak_grouped_df.apply(lambda x: len(x["gene_id"].unique()))
+    peak_nGenes_series = peak_grouped_df.apply(lambda x: seriesLen(x["gene_id"].unique()))
     peak_nGenes_df = peak_nGenes_series.to_frame().reset_index()
     peak_nGenes_df.columns = bed_cols + ['numGenes']
     peak_ann_df = peak_centric_cols_df.merge(peak_nGenes_df, how="left", \
