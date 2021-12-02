@@ -44,6 +44,16 @@ def listOrFalse(res_series):
         string_list = ";".join([str(y) for y in res_series if (y != False and y != "False")])
         return string_list
 
+def seriesLen(x):
+    """check the length of a series"""
+    if len(x) == 1:
+        if x[0] != x[0]:
+            return(0)
+        else:
+            return(1)
+    else:
+        return(len(x))
+
 def restricted_float(x):
     try:
         x = float(x)
@@ -224,7 +234,6 @@ if __name__ == '__main__':
     if os.stat(args.bed_file).st_size == 0:
         err_msg = ("ERROR: BED file is empty: %s" % args.bed_file)
         sys.exit(err_msg)
-
 
     if args.rnaDESignificance:
         if args.rnaDESignificance[1].lower() != "max" and \
@@ -582,18 +591,26 @@ if __name__ == '__main__':
             add_col=mPrefix
             if args.compSummitOverlapScores:
                 add_col = ("%s:%s" % (mPrefix,args.compSummitOverlapScores))
+                add_col_exists=True
                 if args.compSummitOverlapScores == "name":
-	                bedLoc_series = featuresInSummitRegion_df.apply( \
-        	            lambda x: ";".join(str(s) for s in list(x["name_b"])))
+                    if "name_b" in list(bedtools_table.columns):
+	                    bedLoc_series = featuresInSummitRegion_df.apply( \
+        		        lambda x: ";".join(str(s) for s in list(x["name_b"])))
+                    else:
+                            add_col_exists=False
                 else:
-	                bedLoc_series = featuresInSummitRegion_df.apply( 
+                    if "signal_b" in list(bedtools_table.columns):
+                        bedLoc_series = featuresInSummitRegion_df.apply( \
 			    lambda x: ";".join(str(s) for s in list(x["signal_b"])))
-                bedLoc_df = bedLoc_series.to_frame().reset_index()
-                bedLoc_df = bedLoc_df.rename(columns={0: (add_col)})
-                bedLoc_df = bedLoc_df.loc[:,["name", add_col]]
-                peaks_df = peaks_df.merge(bedLoc_df, how="left", on="name")
-                compareSumRegToBed_colnames.append(add_col)
-                add_col=("%s:location" % mPrefix)
+                    else:
+                        add_col_exists=False
+                if add_col_exists:
+                    bedLoc_df = bedLoc_series.to_frame().reset_index()
+                    bedLoc_df = bedLoc_df.rename(columns={0: (add_col)})
+                    bedLoc_df = bedLoc_df.loc[:,["name", add_col]]
+                    peaks_df = peaks_df.merge(bedLoc_df, how="left", on="name")
+                    compareSumRegToBed_colnames.append(add_col)
+            add_col=("%s:location" % mPrefix)
             bedLoc_series = featuresInSummitRegion_df.apply( \
                 lambda x: ";".join(str(s) for s in list(x["location"])))
             bedLoc_df = bedLoc_series.to_frame().reset_index()
@@ -921,6 +938,7 @@ if __name__ == '__main__':
     # Add info from other ChIP genewise annotations
     addGeneToTextFeatures_cols=[]
     if args.compareGenesToText:
+        print("WE MADE IT!!!!")
         for other_genewise_idx in range(0,len(args.compareGenesToText)):
             other_genewise_file = args.compareGenesToText[other_genewise_idx]
             other_genewise_prefix = args.compareGenesToTextNames[other_genewise_idx]
@@ -935,6 +953,7 @@ if __name__ == '__main__':
             if args.addGeneToTextFeatures:
                 gene_feature_list=addGeneToTextFeatures_dic[other_genewise_prefix]
                 if "-" in gene_feature_list:
+                    print("YAYYYY!!!")
                     # Report TRUE/FALSE whether both samples 
                     # annotate to the same genes
                     all_peaks_df.loc[:,other_genewise_prefix] = \
@@ -978,7 +997,7 @@ if __name__ == '__main__':
     
     
     ## list number of genes that annotate to peak
-    peak_nGenes_series = peak_grouped_df.apply(lambda x: len(x["gene_id"].unique()))
+    peak_nGenes_series = peak_grouped_df.apply(lambda x: seriesLen(x["gene_id"].unique()))
     peak_nGenes_df = peak_nGenes_series.to_frame().reset_index()
     peak_nGenes_df.columns = bed_cols + ['numGenes']
     peak_ann_df = peak_centric_cols_df.merge(peak_nGenes_df, how="left", \
