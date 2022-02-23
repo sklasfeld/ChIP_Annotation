@@ -76,21 +76,28 @@ def annotate(prefix, intergenic_peaks_df, gene_file, maximum_bp, outdir, \
                 closest_gene_df = closest_gene_df.append(closest_gene_series)
                 upstream_filtered_arr.append(closest_gene_df)
             else:
-                # seperate the peaks upstream of positive strand genes
-                # and upstream of negative strand genes
-                neg_upstream_peak_df = p_group[p_group["tss_strand"] == "-"]
-                pos_upstream_peak_df = p_group[p_group["tss_strand"] == "+"]
-                # get the peaks closest to an upstream gene
-                closest_gene_neg_series = \
-                    neg_upstream_peak_df.loc[neg_upstream_peak_df["distance_from_gene"].idxmax(), :]
-                closest_gene_pos_series = \
-                    pos_upstream_peak_df.loc[pos_upstream_peak_df["distance_from_gene"].idxmax(), :]
-                closest_gene_df = pd.DataFrame(columns=upstream_df.columns)
-                closest_gene_df = closest_gene_df.append(closest_gene_neg_series)
-                closest_gene_df = closest_gene_df.append(closest_gene_pos_series)
+                if 1 == 0:
+                    # seperate the peaks upstream of positive strand genes
+                    # and upstream of negative strand genes
+                    neg_upstream_peak_df = p_group[p_group["tss_strand"] == "-"]
+                    pos_upstream_peak_df = p_group[p_group["tss_strand"] == "+"]
+                    # get the peaks closest to an upstream gene
+                    closest_gene_neg_series = \
+                        neg_upstream_peak_df.loc[neg_upstream_peak_df["distance_from_gene"].idxmax(), :]
+                    closest_gene_pos_series = \
+                        pos_upstream_peak_df.loc[pos_upstream_peak_df["distance_from_gene"].idxmax(), :]
+                    closest_gene_df = pd.DataFrame(columns=upstream_df.columns)
+                    closest_gene_df = closest_gene_df.append(closest_gene_neg_series)
+                    closest_gene_df = closest_gene_df.append(closest_gene_pos_series)
+                else:
+                    closest_gene_series = \
+                        p_group.loc[p_group["distance_from_gene"].idxmax(), :]
+                    closest_gene_df = pd.DataFrame(columns=upstream_df.columns)
+                    closest_gene_df = closest_gene_df.append(closest_gene_series)
                 convergent_peaks_arr.append(closest_gene_df)
                 if not ignore_conv_peaks:
                     upstream_filtered_arr.append(closest_gene_df)
+
     upstream_filtered_df = pd.DataFrame(columns=upstream_df.columns)
     
     if len(upstream_filtered_arr) > 0:
